@@ -1,9 +1,11 @@
-"""
-Analysis module for the Pairs Trading System.
-"""
+"""Analysis module - Correlation, cointegration, and spread building."""
 
-from .correlation import CorrelationAnalyzer
-from .cointegration import CointegrationAnalyzer
-from .spread_builder import SpreadBuilder
+from src.analysis.correlation import CorrelationAnalyzer, CorrelationResult
+from src.analysis.cointegration import CointegrationAnalyzer, CointegrationResult
+from src.analysis.spread_builder import SpreadBuilder, SpreadMetrics
 
-__all__ = ['CorrelationAnalyzer', 'CointegrationAnalyzer', 'SpreadBuilder']
+__all__ = [
+    'CorrelationAnalyzer', 'CorrelationResult',
+    'CointegrationAnalyzer', 'CointegrationResult',
+    'SpreadBuilder', 'SpreadMetrics'
+]

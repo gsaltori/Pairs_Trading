@@ -1,7 +1,5 @@
-"""
-Risk Management module for the Pairs Trading System.
-"""
+"""Risk management module."""
 
-from .risk_manager import RiskManager, PositionSize
+from src.risk.risk_manager import RiskManager, RiskState, PositionInfo
 
-__all__ = ['RiskManager', 'PositionSize']
+__all__ = ['RiskManager', 'RiskState', 'PositionInfo']

@@ -1,30 +1,38 @@
 """
-Main entry point for the Pairs Trading System.
+Pairs Trading System - Main Entry Point
 
-This module provides the main orchestration logic for:
-- Backtesting mode
-- Paper trading mode
-- Live trading mode
-- Walk-forward optimization
+Professional pairs trading system for Forex using IC Markets Global via MetaTrader 5.
+
+Usage:
+    python main.py screen --days 180
+    python main.py backtest --pair EURUSD,GBPUSD --days 365
+    python main.py optimize --pair EURUSD,GBPUSD --days 730
+    python main.py paper --pair EURUSD,GBPUSD
+    python main.py live --pair EURUSD,GBPUSD
 """
 
 import argparse
 import logging
 import sys
-import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
-import pandas as pd
 from pathlib import Path
+from typing import Optional, List, Tuple
 
-# Add project root to path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('logs/pairs_trading.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
+# Imports
 from config.settings import Settings, TradingMode, Timeframe
-from config.broker_config import BrokerConfig
-
-from src.data.broker_client import OandaClient
+from config.broker_config import MT5Config
+from src.data.broker_client import MT5Client, Timeframe as MT5Timeframe
 from src.data.data_manager import DataManager
 from src.analysis.correlation import CorrelationAnalyzer
 from src.analysis.cointegration import CointegrationAnalyzer
@@ -33,69 +41,41 @@ from src.strategy.signals import SignalGenerator
 from src.strategy.pairs_strategy import PairsStrategy
 from src.risk.risk_manager import RiskManager
 from src.backtest.backtest_engine import BacktestEngine
-from src.optimization.optimizer import WalkForwardOptimizer, GridSearchOptimizer
+from src.optimization.optimizer import WalkForwardOptimizer
 from src.execution.executor import LiveExecutor
-
-
-# Configure logging
-def setup_logging(log_level: str = 'INFO', log_file: Optional[str] = None):
-    """Setup logging configuration."""
-    handlers = [logging.StreamHandler()]
-    
-    if log_file:
-        handlers.append(logging.FileHandler(log_file))
-    
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=handlers
-    )
 
 
 class PairsTradingSystem:
     """
-    Main orchestration class for the Pairs Trading System.
+    Main orchestrator for the Pairs Trading System.
     
-    Supports multiple operation modes:
-    - Backtesting: Test strategy on historical data
-    - Paper trading: Test with live data but simulated execution
-    - Live trading: Real money execution
-    - Optimization: Walk-forward parameter optimization
+    Provides unified interface for:
+    - Pair screening
+    - Backtesting
+    - Optimization
+    - Paper trading
+    - Live trading
     """
     
-    def __init__(
-        self,
-        settings: Optional[Settings] = None,
-        broker_config: Optional[BrokerConfig] = None
-    ):
-        """
-        Initialize the trading system.
-        
-        Args:
-            settings: Trading settings (loads default if None)
-            broker_config: Broker configuration (loads from env if None)
-        """
+    def __init__(self, settings: Optional[Settings] = None):
+        """Initialize the trading system."""
         self.settings = settings or Settings()
-        self.broker_config = broker_config
         
-        self.logger = logging.getLogger(__name__)
-        
-        # Initialize components (lazy loading)
-        self._client: Optional[OandaClient] = None
+        # Lazy-loaded components
+        self._client: Optional[MT5Client] = None
         self._data_manager: Optional[DataManager] = None
         self._risk_manager: Optional[RiskManager] = None
         self._strategy: Optional[PairsStrategy] = None
         self._executor: Optional[LiveExecutor] = None
-        
-        self.logger.info("PairsTradingSystem initialized")
     
     @property
-    def client(self) -> OandaClient:
-        """Get or create broker client."""
+    def client(self) -> MT5Client:
+        """Get or create MT5 client."""
         if self._client is None:
-            if self.broker_config is None:
-                self.broker_config = BrokerConfig.from_env()
-            self._client = OandaClient(self.broker_config)
+            config = MT5Config.from_env()
+            self._client = MT5Client(config)
+            if not self._client.connect():
+                raise ConnectionError("Failed to connect to MT5")
         return self._client
     
     @property
@@ -112,386 +92,341 @@ class PairsTradingSystem:
     def risk_manager(self) -> RiskManager:
         """Get or create risk manager."""
         if self._risk_manager is None:
-            self._risk_manager = RiskManager(
-                settings=self.settings,
-                initial_balance=self.settings.backtest.initial_capital
-            )
+            balance = self.client.get_balance()
+            self._risk_manager = RiskManager(self.settings, balance)
         return self._risk_manager
     
     @property
     def strategy(self) -> PairsStrategy:
         """Get or create strategy."""
         if self._strategy is None:
-            self._strategy = PairsStrategy(
-                settings=self.settings,
-                data_manager=self.data_manager
-            )
+            self._strategy = PairsStrategy(self.settings, self.data_manager)
         return self._strategy
-    
-    @property
-    def executor(self) -> LiveExecutor:
-        """Get or create executor."""
-        if self._executor is None:
-            self._executor = LiveExecutor(
-                settings=self.settings,
-                broker_config=self.broker_config,
-                risk_manager=self.risk_manager
-            )
-        return self._executor
-    
-    def run_backtest(
-        self,
-        pair: Tuple[str, str],
-        start_date: datetime,
-        end_date: datetime,
-        timeframe: Optional[Timeframe] = None
-    ):
-        """
-        Run backtest on a single pair.
-        
-        Args:
-            pair: Tuple of (instrument_a, instrument_b)
-            start_date: Backtest start date
-            end_date: Backtest end date
-            timeframe: Timeframe (uses settings default if None)
-            
-        Returns:
-            BacktestResult
-        """
-        tf = timeframe or self.settings.timeframe
-        
-        self.logger.info(f"Running backtest for {pair[0]}/{pair[1]} "
-                        f"from {start_date} to {end_date}")
-        
-        # Fetch data
-        data_a = self.data_manager.fetch_data(
-            instrument=pair[0],
-            timeframe=tf,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        data_b = self.data_manager.fetch_data(
-            instrument=pair[1],
-            timeframe=tf,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        if data_a is None or data_b is None:
-            self.logger.error("Failed to fetch data for backtest")
-            return None
-        
-        # Run backtest
-        engine = BacktestEngine(self.settings, self.data_manager)
-        result = engine.run_backtest(pair, data_a, data_b)
-        
-        # Save results
-        result_path = self.settings.paths.backtest_results / f"backtest_{pair[0]}_{pair[1]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        engine.save_results(result, str(result_path))
-        
-        # Print summary
-        print(result.summary())
-        
-        return result
-    
-    def run_multi_pair_backtest(
-        self,
-        pairs: Optional[List[Tuple[str, str]]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> Dict[Tuple[str, str], any]:
-        """
-        Run backtest on multiple pairs.
-        
-        Args:
-            pairs: List of pairs (uses settings default if None)
-            start_date: Start date (1 year ago if None)
-            end_date: End date (now if None)
-            
-        Returns:
-            Dict mapping pairs to BacktestResults
-        """
-        pairs = pairs or self.settings.pairs
-        end_date = end_date or datetime.now()
-        start_date = start_date or (end_date - timedelta(days=365))
-        
-        results = {}
-        
-        for pair in pairs:
-            self.logger.info(f"Backtesting {pair[0]}/{pair[1]}...")
-            result = self.run_backtest(pair, start_date, end_date)
-            if result:
-                results[pair] = result
-        
-        # Summary
-        self._print_multi_pair_summary(results)
-        
-        return results
-    
-    def run_optimization(
-        self,
-        pair: Tuple[str, str],
-        start_date: datetime,
-        end_date: datetime,
-        objective: str = 'sharpe'
-    ):
-        """
-        Run walk-forward optimization.
-        
-        Args:
-            pair: Pair to optimize
-            start_date: Data start date
-            end_date: Data end date
-            objective: Optimization objective
-            
-        Returns:
-            OptimizationResult
-        """
-        self.logger.info(f"Running walk-forward optimization for {pair[0]}/{pair[1]}")
-        
-        # Fetch data
-        data_a = self.data_manager.fetch_data(
-            instrument=pair[0],
-            timeframe=self.settings.timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        data_b = self.data_manager.fetch_data(
-            instrument=pair[1],
-            timeframe=self.settings.timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        if data_a is None or data_b is None:
-            self.logger.error("Failed to fetch data for optimization")
-            return None
-        
-        # Run optimization
-        optimizer = WalkForwardOptimizer(self.settings, objective)
-        result = optimizer.optimize(pair, data_a, data_b)
-        
-        # Save results
-        result_path = self.settings.paths.optimization_results / f"opt_{pair[0]}_{pair[1]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        optimizer.save_results(result, str(result_path))
-        
-        # Print summary
-        print(result.summary())
-        
-        return result
     
     def screen_pairs(
         self,
-        instruments: Optional[List[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> pd.DataFrame:
+        symbols: Optional[List[str]] = None,
+        timeframe: Optional[Timeframe] = None,
+        days: int = 180
+    ) -> List[Tuple[str, str, dict]]:
         """
-        Screen instruments to find the best pairs.
+        Screen for tradeable pairs.
         
         Args:
-            instruments: List of instruments to screen
-            start_date: Analysis start date
-            end_date: Analysis end date
+            symbols: List of symbols to analyze
+            timeframe: Timeframe for analysis
+            days: Days of history to analyze
             
         Returns:
-            DataFrame with pair analysis results
+            List of (symbol_a, symbol_b, metrics) tuples
         """
-        if instruments is None:
-            instruments = [
-                'EUR_USD', 'GBP_USD', 'USD_JPY', 'USD_CHF',
-                'AUD_USD', 'NZD_USD', 'EUR_GBP', 'EUR_JPY'
-            ]
+        symbols = symbols or self.settings.symbol_universe
+        timeframe = timeframe or self.settings.timeframe
         
-        end_date = end_date or datetime.now()
-        start_date = start_date or (end_date - timedelta(days=180))
+        logger.info(f"Screening {len(symbols)} symbols for pairs...")
         
-        self.logger.info(f"Screening {len(instruments)} instruments for pairs")
+        # Calculate bars needed
+        bars_per_day = 24 if timeframe == Timeframe.H1 else (24 * 4 if timeframe == Timeframe.M15 else 24 * 2)
+        count = days * bars_per_day
         
-        # Fetch data for all instruments
-        data = {}
-        for inst in instruments:
-            df = self.data_manager.fetch_data(
-                instrument=inst,
-                timeframe=self.settings.timeframe,
-                start_date=start_date,
-                end_date=end_date
-            )
-            if df is not None and len(df) > 100:
-                data[inst] = df
+        # Convert timeframe
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
         
-        self.logger.info(f"Loaded data for {len(data)} instruments")
+        # Get data for all symbols
+        symbol_data = {}
+        for symbol in symbols:
+            try:
+                data = self.data_manager.get_close_prices(symbol, mt5_tf, count)
+                if len(data) >= self.settings.backtest.min_bars_required:
+                    symbol_data[symbol] = data
+                    logger.debug(f"Loaded {len(data)} bars for {symbol}")
+            except Exception as e:
+                logger.warning(f"Failed to load {symbol}: {e}")
+        
+        logger.info(f"Loaded data for {len(symbol_data)} symbols")
         
         # Analyze all pairs
-        results = []
-        
-        correlation_analyzer = CorrelationAnalyzer(
-            window=self.settings.spread.regression_window
-        )
-        cointegration_analyzer = CointegrationAnalyzer()
+        corr_analyzer = CorrelationAnalyzer(window=self.settings.spread.correlation_window)
+        coint_analyzer = CointegrationAnalyzer()
         spread_builder = SpreadBuilder(
             regression_window=self.settings.spread.regression_window,
             zscore_window=self.settings.spread.zscore_window
         )
         
-        instruments_list = list(data.keys())
+        results = []
+        symbols_list = list(symbol_data.keys())
         
-        for i, inst_a in enumerate(instruments_list):
-            for inst_b in instruments_list[i+1:]:
-                try:
-                    # Get aligned prices
-                    price_a = data[inst_a]['close']
-                    price_b = data[inst_b]['close']
-                    
-                    # Align
-                    common_idx = price_a.index.intersection(price_b.index)
-                    if len(common_idx) < 200:
-                        continue
-                    
-                    price_a = price_a.loc[common_idx]
-                    price_b = price_b.loc[common_idx]
-                    
-                    # Correlation
-                    corr_result = correlation_analyzer.analyze_pair(price_a, price_b)
-                    
-                    # Cointegration
-                    coint_result = cointegration_analyzer.engle_granger_test(
-                        price_a, price_b
-                    )
-                    
-                    # Spread metrics
-                    spread_metrics = spread_builder.get_spread_metrics(price_a, price_b)
-                    
-                    results.append({
-                        'pair': f"{inst_a}/{inst_b}",
-                        'instrument_a': inst_a,
-                        'instrument_b': inst_b,
-                        'correlation': corr_result.current_correlation,
-                        'correlation_stability': corr_result.stability_score,
-                        'cointegration_pvalue': coint_result.p_value,
-                        'is_cointegrated': coint_result.is_cointegrated,
-                        'hedge_ratio': coint_result.hedge_ratio,
-                        'half_life': coint_result.half_life,
-                        'hurst_exponent': spread_metrics.hurst_exponent if spread_metrics else None,
-                        'current_zscore': spread_metrics.zscore if spread_metrics else None
-                    })
-                    
-                except Exception as e:
-                    self.logger.warning(f"Error analyzing {inst_a}/{inst_b}: {e}")
+        for i, symbol_a in enumerate(symbols_list):
+            for symbol_b in symbols_list[i+1:]:
+                price_a = symbol_data[symbol_a]
+                price_b = symbol_data[symbol_b]
+                
+                # Align data
+                common_idx = price_a.index.intersection(price_b.index)
+                if len(common_idx) < self.settings.backtest.min_bars_required:
                     continue
+                
+                price_a = price_a.loc[common_idx]
+                price_b = price_b.loc[common_idx]
+                
+                # Correlation analysis
+                corr_result = corr_analyzer.analyze_pair(price_a, price_b)
+                
+                if corr_result.current_correlation < self.settings.spread.min_correlation:
+                    continue
+                
+                # Cointegration test
+                coint_result = coint_analyzer.engle_granger_test(price_a, price_b)
+                
+                if not coint_result.is_cointegrated:
+                    continue
+                
+                # Spread metrics
+                metrics = spread_builder.get_spread_metrics(price_a, price_b)
+                
+                if metrics is None:
+                    continue
+                
+                if metrics.half_life > self.settings.spread.max_half_life:
+                    continue
+                
+                # Calculate current z-score
+                spread_data = spread_builder.build_spread_with_zscore(price_a, price_b)
+                current_zscore = spread_data['zscore'].iloc[-1]
+                
+                results.append((symbol_a, symbol_b, {
+                    'correlation': corr_result.current_correlation,
+                    'stability': corr_result.stability_score,
+                    'p_value': coint_result.p_value,
+                    'hedge_ratio': coint_result.hedge_ratio,
+                    'half_life': coint_result.half_life,
+                    'hurst': metrics.hurst_exponent,
+                    'current_zscore': current_zscore
+                }))
         
-        # Convert to DataFrame and sort
-        df = pd.DataFrame(results)
+        # Sort by correlation
+        results.sort(key=lambda x: x[2]['correlation'], reverse=True)
         
-        if len(df) > 0:
-            # Filter and sort
-            df = df[
-                (df['correlation'] >= self.settings.spread.min_correlation) &
-                (df['is_cointegrated'] == True) &
-                (df['half_life'] <= self.settings.spread.max_half_life)
-            ].copy()
+        logger.info(f"Found {len(results)} tradeable pairs")
+        return results
+    
+    def run_backtest(
+        self,
+        pair: Tuple[str, str],
+        timeframe: Optional[Timeframe] = None,
+        days: int = 365,
+        save_results: bool = True
+    ) -> dict:
+        """
+        Run backtest for a single pair.
+        
+        Args:
+            pair: (symbol_a, symbol_b) tuple
+            timeframe: Timeframe for analysis
+            days: Days of history
+            save_results: Whether to save results to file
             
-            df = df.sort_values('correlation_stability', ascending=False)
+        Returns:
+            Backtest results dictionary
+        """
+        timeframe = timeframe or self.settings.timeframe
         
-        self.logger.info(f"Found {len(df)} tradeable pairs")
+        logger.info(f"Running backtest for {pair[0]}/{pair[1]}...")
         
-        return df
+        # Calculate bars
+        bars_per_day = 24 if timeframe == Timeframe.H1 else 96
+        count = days * bars_per_day
+        
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
+        
+        # Get data
+        price_a, price_b = self.data_manager.get_pair_data(
+            pair[0], pair[1], mt5_tf, count
+        )
+        
+        if len(price_a) < self.settings.backtest.min_bars_required:
+            logger.error(f"Insufficient data: {len(price_a)} bars")
+            return {}
+        
+        # Run backtest
+        engine = BacktestEngine(self.settings)
+        result = engine.run_backtest(pair, price_a, price_b)
+        
+        # Save results
+        if save_results and result:
+            filepath = Path(self.settings.paths.backtest_dir) / f"{pair[0]}_{pair[1]}_{datetime.now():%Y%m%d_%H%M%S}.json"
+            engine.save_results(result, str(filepath))
+            logger.info(f"Results saved to {filepath}")
+        
+        return result.__dict__ if result else {}
+    
+    def run_optimization(
+        self,
+        pair: Tuple[str, str],
+        timeframe: Optional[Timeframe] = None,
+        days: int = 730
+    ) -> dict:
+        """
+        Run walk-forward optimization.
+        
+        Args:
+            pair: (symbol_a, symbol_b) tuple
+            timeframe: Timeframe for analysis
+            days: Days of history
+            
+        Returns:
+            Optimization results
+        """
+        timeframe = timeframe or self.settings.timeframe
+        
+        logger.info(f"Running optimization for {pair[0]}/{pair[1]}...")
+        
+        # Calculate bars
+        bars_per_day = 24 if timeframe == Timeframe.H1 else 96
+        count = days * bars_per_day
+        
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
+        
+        # Get data
+        price_a, price_b = self.data_manager.get_pair_data(
+            pair[0], pair[1], mt5_tf, count
+        )
+        
+        if len(price_a) < 1000:
+            logger.error("Insufficient data for optimization")
+            return {}
+        
+        # Run optimization
+        optimizer = WalkForwardOptimizer(self.settings)
+        result = optimizer.optimize(pair, price_a, price_b)
+        
+        # Save results
+        filepath = Path(self.settings.paths.optimization_dir) / f"opt_{pair[0]}_{pair[1]}_{datetime.now():%Y%m%d}.json"
+        optimizer.save_results(result, str(filepath))
+        logger.info(f"Optimization results saved to {filepath}")
+        
+        return {
+            'best_params': result.best_params.__dict__ if result.best_params else {},
+            'efficiency_ratio': result.efficiency_ratio,
+            'is_sharpe': result.is_sharpe,
+            'oos_sharpe': result.oos_sharpe,
+            'total_trades': result.total_trades
+        }
     
     def run_paper_trading(
         self,
-        pairs: Optional[List[Tuple[str, str]]] = None,
-        duration_hours: int = 24
+        pairs: List[Tuple[str, str]],
+        check_interval: int = 60
     ):
         """
         Run paper trading session.
         
         Args:
-            pairs: Pairs to trade
-            duration_hours: How long to run
+            pairs: List of pairs to trade
+            check_interval: Seconds between checks
         """
-        pairs = pairs or self.settings.pairs
-        
-        self.logger.info(f"Starting paper trading session for {duration_hours} hours")
-        self.logger.info(f"Trading pairs: {pairs}")
+        logger.info("Starting paper trading session...")
         
         self.settings.mode = TradingMode.PAPER
         
-        # Initialize components
-        self.executor.start()
-        
-        end_time = datetime.now() + timedelta(hours=duration_hours)
+        config = MT5Config.from_env()
+        executor = LiveExecutor(self.settings, config, self.risk_manager)
         
         try:
-            while datetime.now() < end_time:
-                self._trading_loop_iteration(pairs)
-                time.sleep(60)  # Check every minute
+            executor.start()
+            
+            print("\n" + "="*60)
+            print("PAPER TRADING STARTED")
+            print("Press Ctrl+C to stop")
+            print("="*60 + "\n")
+            
+            import time
+            
+            while True:
+                self._trading_loop_iteration(pairs, executor)
+                time.sleep(check_interval)
                 
         except KeyboardInterrupt:
-            self.logger.info("Paper trading stopped by user")
+            print("\nStopping...")
         finally:
-            self.executor.stop()
-            self._print_trading_summary()
+            executor.stop()
+            
+            # Print summary
+            history = executor.get_trade_history()
+            if not history.empty:
+                print(f"\nTrades: {len(history)}")
+                print(f"Total P&L: ${history['pnl'].sum():.2f}")
     
     def run_live_trading(
         self,
-        pairs: Optional[List[Tuple[str, str]]] = None
+        pairs: List[Tuple[str, str]],
+        check_interval: int = 60
     ):
         """
-        Run live trading.
-        
-        WARNING: This uses real money!
+        Run live trading session.
         
         Args:
-            pairs: Pairs to trade
+            pairs: List of pairs to trade
+            check_interval: Seconds between checks
         """
-        pairs = pairs or self.settings.pairs
-        
         # Safety confirmation
-        print("\n" + "="*60)
+        print("\n" + "!"*60)
         print("WARNING: LIVE TRADING MODE")
-        print("This will execute real trades with real money!")
-        print("="*60)
-        confirm = input("Type 'CONFIRM' to proceed: ")
+        print("This will execute REAL trades with REAL money!")
+        print("!"*60)
         
-        if confirm != 'CONFIRM':
-            print("Live trading cancelled.")
+        confirm = input("\nType 'CONFIRM' to proceed: ")
+        if confirm != "CONFIRM":
+            print("Cancelled.")
             return
         
-        self.logger.info("Starting LIVE trading session")
+        logger.info("Starting LIVE trading session...")
+        
         self.settings.mode = TradingMode.LIVE
         
-        # Verify account
-        try:
-            account = self.client.get_account_summary()
-            self.logger.info(f"Account: {account.get('id')}")
-            self.logger.info(f"Balance: {account.get('balance')}")
-        except Exception as e:
-            self.logger.error(f"Could not verify account: {e}")
-            return
-        
-        self.executor.start()
+        config = MT5Config.from_env()
+        executor = LiveExecutor(self.settings, config, self.risk_manager)
         
         try:
+            executor.start()
+            
+            account = self.client.get_account_info()
+            print(f"\nAccount: {account.get('login')}")
+            print(f"Balance: ${account.get('balance', 0):,.2f}")
+            print(f"Equity: ${account.get('equity', 0):,.2f}")
+            
+            print("\n" + "="*60)
+            print("LIVE TRADING STARTED")
+            print("Press Ctrl+C to stop")
+            print("="*60 + "\n")
+            
+            import time
+            
             while True:
-                self._trading_loop_iteration(pairs)
-                time.sleep(60)
+                self._trading_loop_iteration(pairs, executor)
+                time.sleep(check_interval)
                 
         except KeyboardInterrupt:
-            self.logger.info("Live trading stopped by user")
-        finally:
-            # Emergency close option
-            if self.executor.positions:
+            print("\nStopping...")
+            
+            # Offer to close positions
+            if executor.positions:
                 close = input("Close all positions? (yes/no): ")
                 if close.lower() == 'yes':
-                    self.executor.close_all_positions()
-            
-            self.executor.stop()
-            self._print_trading_summary()
+                    executor.close_all_positions("Session end")
+        finally:
+            executor.stop()
     
-    def _trading_loop_iteration(self, pairs: List[Tuple[str, str]]):
+    def _trading_loop_iteration(
+        self,
+        pairs: List[Tuple[str, str]],
+        executor: LiveExecutor
+    ):
         """Single iteration of the trading loop."""
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print(f"\n[{current_time}]")
+        print("-" * 40)
+        
         for pair in pairs:
             try:
                 # Analyze pair
@@ -500,166 +435,153 @@ class PairsTradingSystem:
                 if analysis is None:
                     continue
                 
-                signal = analysis.current_signal
+                # Get current state
+                zscore = analysis.spread_metrics.zscore if analysis.spread_metrics else 0
+                corr = analysis.correlation_result.current_correlation if analysis.correlation_result else 0
                 
-                if signal and signal.type != 'no_signal':
-                    self.logger.info(f"Signal: {signal.type} for {pair}")
-                    
-                    # Execute signal
-                    success, msg = self.executor.execute_signal(signal)
-                    
-                    if success:
-                        self.logger.info(f"Executed: {msg}")
-                    else:
-                        self.logger.warning(f"Failed: {msg}")
-                        
+                # Check position
+                in_position = pair in executor.positions
+                
+                status = f"{pair[0]}/{pair[1]}: Z={zscore:+.2f}, Corr={corr:.2f}"
+                
+                if in_position:
+                    pos = executor.positions[pair]
+                    status += f" [POS: {pos.direction}, PnL=${pos.unrealized_pnl:.2f}]"
+                
+                print(status)
+                
+                # Execute signal
+                signal = analysis.current_signal
+                if signal and signal.type.value != 'no_signal':
+                    success, msg = executor.execute_signal(signal)
+                    action = "✓" if success else "✗"
+                    print(f"  {action} {signal.type.value}: {msg}")
+                
             except Exception as e:
-                self.logger.error(f"Error in trading loop for {pair}: {e}")
+                logger.error(f"Error processing {pair}: {e}")
         
         # Update positions
-        self.executor.update_positions()
+        executor.update_positions()
+        
+        # Show summary
+        state = executor.get_state()
+        print(f"\nPositions: {len(state.open_positions)} | Daily P&L: ${state.daily_pnl:.2f}")
     
-    def _print_multi_pair_summary(self, results: Dict):
-        """Print summary of multi-pair backtest."""
-        print("\n" + "="*60)
-        print("MULTI-PAIR BACKTEST SUMMARY")
-        print("="*60)
-        
-        for pair, result in results.items():
-            print(f"\n{pair[0]}/{pair[1]}:")
-            print(f"  Return: {result.total_return:.2%}")
-            print(f"  Sharpe: {result.sharpe_ratio:.2f}")
-            print(f"  Max DD: {result.max_drawdown:.2%}")
-            print(f"  Trades: {result.total_trades}")
-            print(f"  Win Rate: {result.win_rate:.2%}")
-        
-        # Aggregate
-        if results:
-            avg_sharpe = sum(r.sharpe_ratio for r in results.values()) / len(results)
-            total_return = sum(r.total_return for r in results.values())
-            
-            print("\n" + "-"*40)
-            print(f"Average Sharpe: {avg_sharpe:.2f}")
-            print(f"Combined Return: {total_return:.2%}")
-        
-        print("="*60)
-    
-    def _print_trading_summary(self):
-        """Print trading session summary."""
-        state = self.executor.get_state()
-        history = self.executor.get_trade_history()
-        
-        print("\n" + "="*60)
-        print("TRADING SESSION SUMMARY")
-        print("="*60)
-        print(f"Mode: {state.mode.value}")
-        print(f"Daily Trades: {state.daily_trades}")
-        print(f"Daily P/L: ${state.daily_pnl:.2f}")
-        print(f"Open Positions: {len(state.open_positions)}")
-        
-        if len(history) > 0:
-            print(f"\nTotal Trades: {len(history)}")
-            wins = len(history[history['pnl'] > 0])
-            print(f"Win Rate: {wins/len(history):.2%}")
-            print(f"Total P/L: ${history['pnl'].sum():.2f}")
-        
-        print("="*60)
+    def shutdown(self):
+        """Clean shutdown of all components."""
+        if self._client:
+            self._client.disconnect()
+        logger.info("System shutdown complete")
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Pairs Trading System')
-    
-    parser.add_argument(
-        'mode',
-        choices=['backtest', 'optimize', 'screen', 'paper', 'live'],
-        help='Operation mode'
+    parser = argparse.ArgumentParser(
+        description='Pairs Trading System for IC Markets Global via MT5'
     )
     
-    parser.add_argument(
-        '--pair',
-        type=str,
-        default='EUR_USD,GBP_USD',
-        help='Trading pair (e.g., EUR_USD,GBP_USD)'
-    )
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
-    parser.add_argument(
-        '--days',
-        type=int,
-        default=365,
-        help='Number of days of history'
-    )
+    # Screen command
+    screen_parser = subparsers.add_parser('screen', help='Screen for tradeable pairs')
+    screen_parser.add_argument('--days', type=int, default=180, help='Days of history')
+    screen_parser.add_argument('--timeframe', type=str, default='H1', help='Timeframe')
     
-    parser.add_argument(
-        '--config',
-        type=str,
-        help='Path to settings YAML file'
-    )
+    # Backtest command
+    bt_parser = subparsers.add_parser('backtest', help='Run backtest')
+    bt_parser.add_argument('--pair', type=str, required=True, help='Pair (e.g., EURUSD,GBPUSD)')
+    bt_parser.add_argument('--days', type=int, default=365, help='Days of history')
+    bt_parser.add_argument('--timeframe', type=str, default='H1', help='Timeframe')
     
-    parser.add_argument(
-        '--log-level',
-        type=str,
-        default='INFO',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        help='Logging level'
-    )
+    # Optimize command
+    opt_parser = subparsers.add_parser('optimize', help='Run optimization')
+    opt_parser.add_argument('--pair', type=str, required=True, help='Pair')
+    opt_parser.add_argument('--days', type=int, default=730, help='Days of history')
     
-    parser.add_argument(
-        '--log-file',
-        type=str,
-        help='Log file path'
-    )
+    # Paper trading command
+    paper_parser = subparsers.add_parser('paper', help='Run paper trading')
+    paper_parser.add_argument('--pair', type=str, required=True, help='Pairs to trade')
+    paper_parser.add_argument('--interval', type=int, default=60, help='Check interval (seconds)')
+    
+    # Live trading command
+    live_parser = subparsers.add_parser('live', help='Run live trading')
+    live_parser.add_argument('--pair', type=str, required=True, help='Pairs to trade')
+    live_parser.add_argument('--interval', type=int, default=60, help='Check interval (seconds)')
     
     args = parser.parse_args()
     
-    # Setup logging
-    setup_logging(args.log_level, args.log_file)
-    
-    # Load settings
-    if args.config:
-        settings = Settings.load(args.config)
-    else:
-        settings = Settings()
-    
-    # Parse pair
-    pair_parts = args.pair.split(',')
-    if len(pair_parts) == 2:
-        pair = (pair_parts[0].strip(), pair_parts[1].strip())
-    else:
-        print("Invalid pair format. Use: INST_A,INST_B")
+    if not args.command:
+        parser.print_help()
         return
     
-    # Calculate dates
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=args.days)
+    # Create system
+    system = PairsTradingSystem()
     
-    # Initialize system
     try:
-        broker_config = BrokerConfig.from_env()
+        if args.command == 'screen':
+            tf = Timeframe(args.timeframe) if args.timeframe else None
+            results = system.screen_pairs(timeframe=tf, days=args.days)
+            
+            print("\n" + "="*80)
+            print("PAIR SCREENING RESULTS")
+            print("="*80)
+            
+            for symbol_a, symbol_b, metrics in results[:20]:
+                print(f"\n{symbol_a}/{symbol_b}:")
+                print(f"  Correlation: {metrics['correlation']:.3f} (stability: {metrics['stability']:.2f})")
+                print(f"  Cointegration p-value: {metrics['p_value']:.4f}")
+                print(f"  Hedge ratio: {metrics['hedge_ratio']:.4f}")
+                print(f"  Half-life: {metrics['half_life']:.1f} bars")
+                print(f"  Current Z-score: {metrics['current_zscore']:+.2f}")
+        
+        elif args.command == 'backtest':
+            pair = tuple(args.pair.split(','))
+            tf = Timeframe(args.timeframe) if args.timeframe else None
+            
+            result = system.run_backtest(pair, tf, args.days)
+            
+            if result:
+                print("\n" + "="*60)
+                print("BACKTEST RESULTS")
+                print("="*60)
+                print(f"Total Return: {result.get('total_return', 0):.2%}")
+                print(f"Sharpe Ratio: {result.get('sharpe_ratio', 0):.2f}")
+                print(f"Max Drawdown: {result.get('max_drawdown', 0):.2%}")
+                print(f"Win Rate: {result.get('win_rate', 0):.1%}")
+                print(f"Total Trades: {result.get('total_trades', 0)}")
+        
+        elif args.command == 'optimize':
+            pair = tuple(args.pair.split(','))
+            
+            result = system.run_optimization(pair, days=args.days)
+            
+            if result:
+                print("\n" + "="*60)
+                print("OPTIMIZATION RESULTS")
+                print("="*60)
+                print(f"Best Parameters: {result.get('best_params', {})}")
+                print(f"Efficiency Ratio: {result.get('efficiency_ratio', 0):.2f}")
+                print(f"IS Sharpe: {result.get('is_sharpe', 0):.2f}")
+                print(f"OOS Sharpe: {result.get('oos_sharpe', 0):.2f}")
+        
+        elif args.command == 'paper':
+            pairs = [tuple(p.split(',')) for p in args.pair.split(';')]
+            system.run_paper_trading(pairs, args.interval)
+        
+        elif args.command == 'live':
+            pairs = [tuple(p.split(',')) for p in args.pair.split(';')]
+            system.run_live_trading(pairs, args.interval)
+    
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
     except Exception as e:
-        logging.warning(f"Could not load broker config: {e}")
-        broker_config = None
-    
-    system = PairsTradingSystem(settings, broker_config)
-    
-    # Execute mode
-    if args.mode == 'backtest':
-        system.run_backtest(pair, start_date, end_date)
-        
-    elif args.mode == 'optimize':
-        system.run_optimization(pair, start_date, end_date)
-        
-    elif args.mode == 'screen':
-        df = system.screen_pairs(start_date=start_date, end_date=end_date)
-        print("\nTop Pairs:")
-        print(df.to_string())
-        
-    elif args.mode == 'paper':
-        system.run_paper_trading(pairs=[pair])
-        
-    elif args.mode == 'live':
-        system.run_live_trading(pairs=[pair])
+        logger.error(f"Error: {e}")
+        raise
+    finally:
+        system.shutdown()
 
 
 if __name__ == '__main__':
+    # Create logs directory
+    Path('logs').mkdir(exist_ok=True)
     main()

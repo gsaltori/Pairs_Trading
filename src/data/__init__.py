@@ -1,8 +1,6 @@
-"""
-Data module for the Pairs Trading System.
-"""
+"""Data module - MT5 client and data management."""
 
-from .broker_client import OandaClient
-from .data_manager import DataManager
+from src.data.broker_client import MT5Client, Timeframe, OrderType
+from src.data.data_manager import DataManager
 
-__all__ = ['OandaClient', 'DataManager']
+__all__ = ['MT5Client', 'Timeframe', 'OrderType', 'DataManager']

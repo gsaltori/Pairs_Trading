@@ -1,523 +1,399 @@
 """
-Risk Manager
+Risk Management Module.
 
-Handles all risk management aspects:
-- Position sizing
-- Exposure limits
-- Drawdown monitoring
-- Risk-adjusted metrics
+Handles position sizing, exposure limits, and drawdown control.
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List, Tuple
 import logging
 
-import sys
-sys.path.append(str(__file__).rsplit('\\', 3)[0])
-
-from config.settings import Settings, RiskParameters
-from config.broker_config import OANDA_INSTRUMENTS
+from config.settings import Settings
 
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PositionSize:
-    """Position sizing for a pair trade."""
+class PositionInfo:
+    """Information about an open position."""
     pair: Tuple[str, str]
-    units_a: int  # Units for instrument A
-    units_b: int  # Units for instrument B
-    hedge_ratio: float
-    notional_value: float
-    risk_amount: float
-    margin_required: float
+    direction: str  # 'long_spread' or 'short_spread'
+    size_a: float
+    size_b: float
+    entry_time: datetime
+    entry_pnl: float = 0.0
+    current_pnl: float = 0.0
 
 
 @dataclass
 class RiskState:
     """Current risk state."""
-    timestamp: datetime
-    account_balance: float
-    account_equity: float
-    open_positions: int
     total_exposure: float
-    exposure_pct: float
-    unrealized_pnl: float
+    open_pairs: int
     daily_pnl: float
-    max_drawdown: float
+    daily_trades: int
     current_drawdown: float
+    peak_equity: float
+    is_halted: bool = False
+    halt_reason: str = ""
 
 
 class RiskManager:
     """
-    Manages risk for the Pairs Trading System.
+    Manages risk for the pairs trading system.
     
     Features:
-    - Position sizing based on risk per trade
-    - Hedge ratio-balanced position sizes
-    - Exposure monitoring
-    - Drawdown tracking
-    - Risk limits enforcement
+    - Position sizing with hedge ratio balancing
+    - Exposure limits
+    - Drawdown monitoring
+    - Daily loss limits
     """
     
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        initial_capital: float
+    ):
         """
-        Initialize the Risk Manager.
+        Initialize risk manager.
         
         Args:
-            settings: System settings
+            settings: Trading settings
+            initial_capital: Starting capital
         """
         self.settings = settings
-        self.params = settings.risk_params
+        self.risk_settings = settings.risk
         
-        # Track state
-        self._account_balance: float = settings.backtest_params.initial_capital
-        self._peak_equity: float = self._account_balance
-        self._current_equity: float = self._account_balance
-        self._open_positions: Dict[Tuple[str, str], PositionSize] = {}
-        self._daily_start_equity: float = self._account_balance
-        self._trade_history: List[Dict] = []
+        self.initial_capital = initial_capital
+        self.current_capital = initial_capital
+        self.peak_capital = initial_capital
+        
+        # Position tracking
+        self.positions: Dict[Tuple[str, str], PositionInfo] = {}
+        
+        # Daily tracking
+        self.daily_pnl = 0.0
+        self.daily_trades = 0
+        self.last_reset = datetime.now()
+        
+        # State
+        self.is_halted = False
+        self.halt_reason = ""
     
-    def set_account_balance(self, balance: float) -> None:
-        """Update account balance."""
-        self._account_balance = balance
-        self._current_equity = balance
-        if balance > self._peak_equity:
-            self._peak_equity = balance
+    def can_open_position(
+        self,
+        pair: Tuple[str, str],
+        size_usd: Optional[float] = None
+    ) -> bool:
+        """
+        Check if a new position can be opened.
+        
+        Args:
+            pair: Pair to trade
+            size_usd: Proposed position size in USD
+            
+        Returns:
+            True if position can be opened
+        """
+        # Check if trading is halted
+        if self.is_halted:
+            logger.warning(f"Trading halted: {self.halt_reason}")
+            return False
+        
+        # Check pair limit
+        if len(self.positions) >= self.risk_settings.max_open_pairs:
+            logger.warning(f"Max pairs reached: {len(self.positions)}")
+            return False
+        
+        # Check if already in position
+        if pair in self.positions:
+            logger.warning(f"Already in position for {pair}")
+            return False
+        
+        # Check daily trade limit
+        self._check_daily_reset()
+        if self.daily_trades >= self.risk_settings.max_daily_trades:
+            logger.warning("Daily trade limit reached")
+            return False
+        
+        # Check daily loss limit
+        daily_loss_limit = self.current_capital * self.risk_settings.max_daily_loss
+        if self.daily_pnl < -daily_loss_limit:
+            logger.warning(f"Daily loss limit reached: {self.daily_pnl:.2f}")
+            return False
+        
+        # Check total exposure
+        if size_usd:
+            current_exposure = self._calculate_total_exposure()
+            max_exposure = self.current_capital * self.risk_settings.max_total_exposure
+            
+            if current_exposure + size_usd > max_exposure:
+                logger.warning(f"Exposure limit exceeded")
+                return False
+        
+        return True
     
     def calculate_position_size(
         self,
         pair: Tuple[str, str],
         hedge_ratio: float,
-        current_prices: Dict[str, float],
-        atr_a: Optional[float] = None,
-        atr_b: Optional[float] = None
-    ) -> PositionSize:
+        stop_loss_pct: float = 0.02
+    ) -> Tuple[float, float]:
         """
-        Calculate position sizes for a pair trade.
-        
-        Uses risk-based position sizing balanced by hedge ratio.
+        Calculate position sizes for both legs.
         
         Args:
-            pair: Instrument pair (A, B)
-            hedge_ratio: Hedge ratio (beta) for the spread
-            current_prices: Dictionary with current prices
-            atr_a: ATR for instrument A (optional, for volatility sizing)
-            atr_b: ATR for instrument B (optional)
+            pair: Pair to trade
+            hedge_ratio: Hedge ratio (β)
+            stop_loss_pct: Expected stop loss percentage
             
         Returns:
-            PositionSize with calculated units
+            (size_a, size_b) in lots
         """
-        instrument_a, instrument_b = pair
-        price_a = current_prices.get(instrument_a, {}).get('mid', 0)
-        price_b = current_prices.get(instrument_b, {}).get('mid', 0)
+        # Risk amount per trade
+        risk_amount = self.current_capital * self.risk_settings.max_risk_per_trade
         
-        if price_a == 0 or price_b == 0:
-            raise ValueError(f"Invalid prices for {pair}")
-        
-        # Calculate risk amount
-        risk_amount = self._account_balance * self.params.max_risk_per_trade
-        
-        if self.params.max_loss_per_trade:
-            risk_amount = min(risk_amount, self.params.max_loss_per_trade)
-        
-        # Position sizing method
-        if self.params.sizing_method == 'volatility_adjusted' and atr_a and atr_b:
-            # Volatility-adjusted sizing
-            # Units sized inversely to volatility
-            vol_ratio = atr_b / atr_a if atr_a > 0 else 1.0
-            base_units = risk_amount / (atr_a + atr_b * abs(hedge_ratio))
-            units_a = int(base_units)
-            units_b = int(base_units * abs(hedge_ratio) * vol_ratio)
+        # Split risk between legs if balancing
+        if self.risk_settings.balance_legs:
+            risk_per_leg = risk_amount / 2
         else:
-            # Equal notional sizing adjusted for hedge ratio
-            # Total notional = price_a * units_a + price_b * units_b * hedge_ratio
-            # We want: price_a * units_a ≈ price_b * units_b * hedge_ratio
-            
-            total_notional = risk_amount * 10  # Use 10:1 leverage as baseline
-            
-            # Solve for units
-            # units_a * price_a = units_b * price_b * hedge_ratio
-            # total_notional = units_a * price_a + units_b * price_b * hedge_ratio
-            # total_notional = 2 * units_a * price_a
-            
-            units_a = int(total_notional / (2 * price_a))
-            units_b = int(units_a * price_a * abs(hedge_ratio) / price_b)
+            risk_per_leg = risk_amount
         
-        # Ensure hedge ratio balance
-        actual_ratio = (units_b * price_b) / (units_a * price_a) if units_a > 0 else 0
+        # Calculate notional size based on risk
+        # Assuming ~$10 per pip per standard lot for majors
+        pip_value = 10.0  # Approximate
+        stop_pips = stop_loss_pct * 100 * 100  # Convert to pips
         
-        # Calculate notional value
-        notional_a = units_a * price_a
-        notional_b = units_b * price_b
-        total_notional = notional_a + notional_b
+        if stop_pips <= 0:
+            stop_pips = 30  # Default 30 pips
         
-        # Estimate margin (typically 2-5% for major forex pairs)
-        margin_rate = 0.02  # 2% margin = 50:1 leverage
-        margin_required = total_notional * margin_rate
+        base_size = risk_per_leg / (stop_pips * pip_value)
         
-        return PositionSize(
-            pair=pair,
-            units_a=units_a,
-            units_b=units_b,
-            hedge_ratio=hedge_ratio,
-            notional_value=total_notional,
-            risk_amount=risk_amount,
-            margin_required=margin_required
-        )
+        # Apply hedge ratio
+        size_a = base_size
+        size_b = base_size * hedge_ratio
+        
+        # Round to lot step (0.01)
+        size_a = round(size_a, 2)
+        size_b = round(size_b, 2)
+        
+        # Minimum lot
+        size_a = max(0.01, size_a)
+        size_b = max(0.01, size_b)
+        
+        return size_a, size_b
     
-    def check_trade_allowed(
+    def record_entry(
         self,
-        position_size: PositionSize
-    ) -> Tuple[bool, str]:
+        pair: Tuple[str, str],
+        direction: str,
+        size_a: float,
+        size_b: float
+    ):
         """
-        Check if a new trade is allowed given current risk limits.
+        Record a new position entry.
         
         Args:
-            position_size: Proposed position size
-            
-        Returns:
-            Tuple of (is_allowed, reason)
+            pair: Pair traded
+            direction: 'long_spread' or 'short_spread'
+            size_a: Size of leg A
+            size_b: Size of leg B
         """
-        # Check max open pairs
-        if len(self._open_positions) >= self.params.max_open_pairs:
-            return False, f"Max open pairs reached: {len(self._open_positions)}"
-        
-        # Check if pair already open
-        if position_size.pair in self._open_positions:
-            return False, f"Pair {position_size.pair} already has open position"
-        
-        # Check total exposure
-        current_exposure = sum(p.notional_value for p in self._open_positions.values())
-        new_exposure = current_exposure + position_size.notional_value
-        exposure_pct = new_exposure / self._account_balance
-        
-        if exposure_pct > self.params.max_total_exposure:
-            return False, f"Max exposure exceeded: {exposure_pct:.1%} > {self.params.max_total_exposure:.1%}"
-        
-        # Check drawdown
-        current_dd = self._calculate_current_drawdown()
-        if current_dd >= self.params.max_drawdown:
-            return False, f"Max drawdown reached: {current_dd:.1%}"
-        
-        # Check margin
-        if position_size.margin_required > self._account_balance * 0.5:
-            return False, f"Insufficient margin"
-        
-        return True, "Trade allowed"
-    
-    def register_open_position(self, position_size: PositionSize) -> None:
-        """
-        Register a newly opened position.
-        
-        Args:
-            position_size: Position size details
-        """
-        self._open_positions[position_size.pair] = position_size
-        
-        logger.info(
-            f"Registered position: {position_size.pair} - "
-            f"A: {position_size.units_a}, B: {position_size.units_b}"
+        self.positions[pair] = PositionInfo(
+            pair=pair,
+            direction=direction,
+            size_a=size_a,
+            size_b=size_b,
+            entry_time=datetime.now()
         )
+        
+        self.daily_trades += 1
+        
+        logger.info(f"Position recorded: {pair} {direction}")
     
-    def close_position(
+    def record_exit(
         self,
         pair: Tuple[str, str],
         pnl: float
-    ) -> None:
+    ):
         """
-        Close a position and update risk state.
+        Record position exit.
         
         Args:
-            pair: Instrument pair
-            pnl: Profit/loss from the trade
+            pair: Pair closed
+            pnl: Realized P&L
         """
-        if pair not in self._open_positions:
-            logger.warning(f"Position not found: {pair}")
+        if pair in self.positions:
+            del self.positions[pair]
+        
+        self.daily_pnl += pnl
+        self.current_capital += pnl
+        
+        # Update peak
+        if self.current_capital > self.peak_capital:
+            self.peak_capital = self.current_capital
+        
+        # Check drawdown
+        self._check_drawdown()
+        
+        logger.info(f"Position closed: {pair}, P&L: {pnl:.2f}")
+    
+    def update_pnl(
+        self,
+        pair: Tuple[str, str],
+        unrealized_pnl: float
+    ):
+        """
+        Update unrealized P&L for a position.
+        
+        Args:
+            pair: Pair to update
+            unrealized_pnl: Current unrealized P&L
+        """
+        if pair in self.positions:
+            self.positions[pair].current_pnl = unrealized_pnl
+    
+    def _calculate_total_exposure(self) -> float:
+        """Calculate total exposure across all positions."""
+        # Simplified: sum of position sizes * approximate contract value
+        exposure = 0.0
+        
+        for pos in self.positions.values():
+            # Assume 100k contract size
+            exposure += pos.size_a * 100000
+            exposure += pos.size_b * 100000
+        
+        return exposure
+    
+    def _check_drawdown(self):
+        """Check and enforce drawdown limits."""
+        if self.peak_capital <= 0:
             return
         
-        position = self._open_positions.pop(pair)
+        drawdown = (self.peak_capital - self.current_capital) / self.peak_capital
         
-        # Update balance
-        self._account_balance += pnl
-        self._current_equity = self._account_balance
-        
-        # Update peak if new high
-        if self._current_equity > self._peak_equity:
-            self._peak_equity = self._current_equity
-        
-        # Record trade
-        self._trade_history.append({
-            'pair': pair,
-            'pnl': pnl,
-            'timestamp': datetime.now(),
-            'balance_after': self._account_balance
-        })
-        
-        logger.info(
-            f"Closed position: {pair} - PnL: {pnl:.2f}, "
-            f"Balance: {self._account_balance:.2f}"
-        )
+        if drawdown >= self.risk_settings.max_drawdown:
+            if self.risk_settings.drawdown_halt:
+                self.halt_trading(f"Max drawdown reached: {drawdown:.1%}")
     
-    def _calculate_current_drawdown(self) -> float:
-        """Calculate current drawdown from peak."""
-        if self._peak_equity == 0:
-            return 0.0
-        return (self._peak_equity - self._current_equity) / self._peak_equity
-    
-    def update_equity(self, unrealized_pnl: float) -> None:
-        """
-        Update current equity with unrealized P&L.
+    def _check_daily_reset(self):
+        """Reset daily counters if new day."""
+        now = datetime.now()
         
-        Args:
-            unrealized_pnl: Total unrealized profit/loss
-        """
-        self._current_equity = self._account_balance + unrealized_pnl
+        if now.date() > self.last_reset.date():
+            self.daily_pnl = 0.0
+            self.daily_trades = 0
+            self.last_reset = now
+            
+            # Resume trading if halted for daily loss
+            if "daily" in self.halt_reason.lower():
+                self.resume_trading()
+            
+            logger.info("Daily counters reset")
     
-    def get_risk_state(self) -> RiskState:
-        """
-        Get current risk state.
+    def halt_trading(self, reason: str):
+        """Halt all trading."""
+        self.is_halted = True
+        self.halt_reason = reason
+        logger.warning(f"Trading halted: {reason}")
+    
+    def resume_trading(self):
+        """Resume trading."""
+        self.is_halted = False
+        self.halt_reason = ""
+        logger.info("Trading resumed")
+    
+    def get_state(self) -> RiskState:
+        """Get current risk state."""
+        self._check_daily_reset()
         
-        Returns:
-            RiskState object
-        """
-        current_exposure = sum(p.notional_value for p in self._open_positions.values())
-        exposure_pct = current_exposure / self._account_balance if self._account_balance > 0 else 0
-        unrealized = self._current_equity - self._account_balance
-        daily_pnl = self._current_equity - self._daily_start_equity
+        drawdown = 0.0
+        if self.peak_capital > 0:
+            drawdown = (self.peak_capital - self.current_capital) / self.peak_capital
         
         return RiskState(
-            timestamp=datetime.now(),
-            account_balance=self._account_balance,
-            account_equity=self._current_equity,
-            open_positions=len(self._open_positions),
-            total_exposure=current_exposure,
-            exposure_pct=exposure_pct,
-            unrealized_pnl=unrealized,
-            daily_pnl=daily_pnl,
-            max_drawdown=self.params.max_drawdown,
-            current_drawdown=self._calculate_current_drawdown()
+            total_exposure=self._calculate_total_exposure(),
+            open_pairs=len(self.positions),
+            daily_pnl=self.daily_pnl,
+            daily_trades=self.daily_trades,
+            current_drawdown=drawdown,
+            peak_equity=self.peak_capital,
+            is_halted=self.is_halted,
+            halt_reason=self.halt_reason
         )
     
-    def calculate_trade_pnl(
+    def get_risk_summary(self) -> str:
+        """Get human-readable risk summary."""
+        state = self.get_state()
+        
+        return f"""
+Risk Summary
+============
+Capital: ${self.current_capital:,.2f} (Peak: ${self.peak_capital:,.2f})
+Drawdown: {state.current_drawdown:.1%}
+Exposure: ${state.total_exposure:,.0f}
+Open Pairs: {state.open_pairs} / {self.risk_settings.max_open_pairs}
+Daily P&L: ${state.daily_pnl:.2f}
+Daily Trades: {state.daily_trades} / {self.risk_settings.max_daily_trades}
+Status: {"HALTED - " + state.halt_reason if state.is_halted else "Active"}
+"""
+    
+    def check_emergency_exit(
         self,
-        position_size: PositionSize,
-        entry_prices: Dict[str, float],
-        exit_prices: Dict[str, float],
-        position_type: str  # 'long_spread' or 'short_spread'
-    ) -> float:
+        pair: Tuple[str, str],
+        unrealized_pnl: float
+    ) -> bool:
         """
-        Calculate P&L for a pair trade.
+        Check if emergency exit is needed for a position.
         
         Args:
-            position_size: Position size details
-            entry_prices: Entry prices for both instruments
-            exit_prices: Exit prices for both instruments
-            position_type: Type of position
+            pair: Pair to check
+            unrealized_pnl: Current unrealized P&L
             
         Returns:
-            Total P&L in account currency
+            True if emergency exit needed
         """
-        instrument_a, instrument_b = position_size.pair
+        # Check position-level stop
+        max_loss = self.current_capital * self.risk_settings.max_risk_per_trade * 2
         
-        entry_a = entry_prices.get(instrument_a, 0)
-        entry_b = entry_prices.get(instrument_b, 0)
-        exit_a = exit_prices.get(instrument_a, 0)
-        exit_b = exit_prices.get(instrument_b, 0)
+        if unrealized_pnl < -max_loss:
+            logger.warning(f"Emergency exit triggered for {pair}: {unrealized_pnl:.2f}")
+            return True
         
-        # Calculate P&L for each leg
-        if position_type == 'long_spread':
-            # Long A, Short B
-            pnl_a = (exit_a - entry_a) * position_size.units_a
-            pnl_b = (entry_b - exit_b) * position_size.units_b
-        else:  # short_spread
-            # Short A, Long B
-            pnl_a = (entry_a - exit_a) * position_size.units_a
-            pnl_b = (exit_b - entry_b) * position_size.units_b
-        
-        # Convert to account currency if needed
-        # For simplicity, assuming USD account and standard lot conversion
-        pnl_a = self._convert_pnl_to_usd(instrument_a, pnl_a, exit_a)
-        pnl_b = self._convert_pnl_to_usd(instrument_b, pnl_b, exit_b)
-        
-        return pnl_a + pnl_b
+        return False
     
-    def _convert_pnl_to_usd(
+    def validate_trade(
         self,
-        instrument: str,
-        pnl: float,
-        current_price: float
-    ) -> float:
+        pair: Tuple[str, str],
+        size_a: float,
+        size_b: float
+    ) -> Tuple[bool, str]:
         """
-        Convert P&L to USD.
+        Validate a proposed trade.
         
         Args:
-            instrument: Instrument name
-            pnl: P&L in quote currency
-            current_price: Current price
+            pair: Pair to trade
+            size_a: Proposed size for leg A
+            size_b: Proposed size for leg B
             
         Returns:
-            P&L in USD
+            (is_valid, reason) tuple
         """
-        # Extract quote currency
-        quote_currency = instrument[4:]
+        # Check basic permissions
+        if not self.can_open_position(pair):
+            return False, "Cannot open position"
         
-        if quote_currency == 'USD':
-            return pnl
-        elif quote_currency == 'JPY':
-            # Need USD/JPY rate - approximate
-            return pnl / current_price
-        else:
-            # For other pairs, would need conversion rate
-            # For simplicity, return as is
-            return pnl
-    
-    def calculate_sharpe_ratio(
-        self,
-        returns: pd.Series,
-        risk_free_rate: float = 0.02,
-        periods_per_year: int = 252
-    ) -> float:
-        """
-        Calculate Sharpe ratio from returns.
+        # Check minimum size
+        if size_a < 0.01 or size_b < 0.01:
+            return False, "Position size too small"
         
-        Args:
-            returns: Series of returns
-            risk_free_rate: Annual risk-free rate
-            periods_per_year: Trading periods per year
-            
-        Returns:
-            Annualized Sharpe ratio
-        """
-        if returns.empty or returns.std() == 0:
-            return 0.0
+        # Check maximum size
+        max_lot = 10.0  # Arbitrary max
+        if size_a > max_lot or size_b > max_lot:
+            return False, "Position size too large"
         
-        excess_returns = returns - risk_free_rate / periods_per_year
-        
-        return np.sqrt(periods_per_year) * excess_returns.mean() / excess_returns.std()
-    
-    def calculate_sortino_ratio(
-        self,
-        returns: pd.Series,
-        risk_free_rate: float = 0.02,
-        periods_per_year: int = 252
-    ) -> float:
-        """
-        Calculate Sortino ratio (downside deviation only).
-        
-        Args:
-            returns: Series of returns
-            risk_free_rate: Annual risk-free rate
-            periods_per_year: Trading periods per year
-            
-        Returns:
-            Annualized Sortino ratio
-        """
-        if returns.empty:
-            return 0.0
-        
-        excess_returns = returns - risk_free_rate / periods_per_year
-        downside_returns = excess_returns[excess_returns < 0]
-        
-        if downside_returns.empty or downside_returns.std() == 0:
-            return 0.0
-        
-        downside_std = np.sqrt((downside_returns ** 2).mean())
-        
-        return np.sqrt(periods_per_year) * excess_returns.mean() / downside_std
-    
-    def calculate_max_drawdown(self, equity_curve: pd.Series) -> Tuple[float, datetime, datetime]:
-        """
-        Calculate maximum drawdown from equity curve.
-        
-        Args:
-            equity_curve: Series of equity values
-            
-        Returns:
-            Tuple of (max_drawdown, peak_date, trough_date)
-        """
-        if equity_curve.empty:
-            return 0.0, None, None
-        
-        # Calculate running maximum
-        running_max = equity_curve.expanding().max()
-        
-        # Calculate drawdown
-        drawdown = (running_max - equity_curve) / running_max
-        
-        # Find maximum drawdown
-        max_dd = drawdown.max()
-        max_dd_end = drawdown.idxmax()
-        
-        # Find peak before max drawdown
-        peak_date = equity_curve[:max_dd_end].idxmax()
-        
-        return max_dd, peak_date, max_dd_end
-    
-    def get_trade_statistics(self) -> Dict:
-        """
-        Get statistics from trade history.
-        
-        Returns:
-            Dictionary of trade statistics
-        """
-        if not self._trade_history:
-            return {
-                'total_trades': 0,
-                'winning_trades': 0,
-                'losing_trades': 0,
-                'win_rate': 0.0,
-                'avg_win': 0.0,
-                'avg_loss': 0.0,
-                'profit_factor': 0.0,
-                'expectancy': 0.0
-            }
-        
-        pnls = [t['pnl'] for t in self._trade_history]
-        wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p < 0]
-        
-        total_trades = len(pnls)
-        winning_trades = len(wins)
-        losing_trades = len(losses)
-        
-        win_rate = winning_trades / total_trades if total_trades > 0 else 0
-        avg_win = np.mean(wins) if wins else 0
-        avg_loss = np.mean(losses) if losses else 0
-        
-        gross_profit = sum(wins)
-        gross_loss = abs(sum(losses))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
-        
-        expectancy = (win_rate * avg_win) + ((1 - win_rate) * avg_loss)
-        
-        return {
-            'total_trades': total_trades,
-            'winning_trades': winning_trades,
-            'losing_trades': losing_trades,
-            'win_rate': win_rate,
-            'avg_win': avg_win,
-            'avg_loss': avg_loss,
-            'profit_factor': profit_factor,
-            'expectancy': expectancy,
-            'total_pnl': sum(pnls),
-            'gross_profit': gross_profit,
-            'gross_loss': gross_loss
-        }
-    
-    def reset_daily(self) -> None:
-        """Reset daily tracking (call at start of each day)."""
-        self._daily_start_equity = self._current_equity
-    
-    def reset(self) -> None:
-        """Reset all risk state."""
-        self._account_balance = self.settings.backtest_params.initial_capital
-        self._peak_equity = self._account_balance
-        self._current_equity = self._account_balance
-        self._open_positions.clear()
-        self._daily_start_equity = self._account_balance
-        self._trade_history.clear()
+        return True, "Trade validated"

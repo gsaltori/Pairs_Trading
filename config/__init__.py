@@ -1,8 +1,6 @@
-"""
-Configuration module for Pairs Trading System.
-"""
+"""Configuration module."""
 
-from .settings import Settings
-from .broker_config import BrokerConfig
+from config.settings import Settings, Timeframe, TradingMode
+from config.broker_config import MT5Config
 
-__all__ = ['Settings', 'BrokerConfig']
+__all__ = ['Settings', 'Timeframe', 'TradingMode', 'MT5Config']

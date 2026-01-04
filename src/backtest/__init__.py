@@ -1,7 +1,5 @@
-"""
-Backtesting module for the Pairs Trading System.
-"""
+"""Backtesting module."""
 
-from .backtest_engine import BacktestEngine, BacktestResult
+from src.backtest.backtest_engine import BacktestEngine, BacktestResult, Trade
 
-__all__ = ['BacktestEngine', 'BacktestResult']
+__all__ = ['BacktestEngine', 'BacktestResult', 'Trade']

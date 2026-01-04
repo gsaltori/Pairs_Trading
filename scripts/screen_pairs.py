@@ -1,25 +1,23 @@
 """
-Example: Screen currency pairs to find the best candidates for pairs trading.
+Example: Screen for tradeable pairs.
 
 This script demonstrates how to:
-1. Analyze correlation between multiple currency pairs
-2. Test for cointegration
-3. Calculate spread metrics
-4. Rank pairs by tradability
+1. Load data for multiple symbols
+2. Calculate correlation and cointegration
+3. Filter pairs by trading criteria
+4. Display current trading opportunities
 """
 
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
-import pandas as pd
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config.settings import Settings
-from config.broker_config import BrokerConfig
-from src.data.broker_client import OandaClient
+from config.settings import Settings, Timeframe
+from config.broker_config import MT5Config
+from src.data.broker_client import MT5Client, Timeframe as MT5Timeframe
 from src.data.data_manager import DataManager
 from src.analysis.correlation import CorrelationAnalyzer
 from src.analysis.cointegration import CointegrationAnalyzer
@@ -32,183 +30,177 @@ def main():
     print("PAIRS TRADING - PAIR SCREENING")
     print("="*60)
     
-    # Instruments to screen
-    instruments = [
-        'EUR_USD', 'GBP_USD', 'USD_JPY', 'USD_CHF',
-        'AUD_USD', 'NZD_USD', 'USD_CAD', 'EUR_GBP',
-        'EUR_JPY', 'GBP_JPY', 'AUD_JPY', 'EUR_CHF'
+    # Configuration
+    symbols = [
+        "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
+        "AUDUSD", "NZDUSD", "USDCAD",
+        "EURJPY", "GBPJPY", "EURGBP", "EURCHF"
     ]
+    days = 180
+    timeframe = Timeframe.H1
     
-    days_of_history = 180
-    
-    print(f"\nScreening {len(instruments)} instruments")
-    print(f"History: {days_of_history} days")
+    print(f"\nSymbols: {len(symbols)}")
+    print(f"Period: {days} days")
+    print(f"Timeframe: {timeframe.value}")
     
     # Initialize
     settings = Settings()
     
     try:
-        broker_config = BrokerConfig.from_env()
-        client = OandaClient(broker_config)
+        # Connect to MT5
+        config = MT5Config.from_env()
+        client = MT5Client(config)
+        
+        if not client.connect():
+            print("\nERROR: Could not connect to MT5")
+            return
+        
+        print("\n✓ Connected to MT5")
+        
+        # Load data for all symbols
         data_manager = DataManager(client, settings.paths.cache_dir)
-        print("✓ Connected to OANDA")
-    except Exception as e:
-        print(f"ERROR: Could not connect to OANDA: {e}")
-        return
-    
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_of_history)
-    
-    # Fetch data for all instruments
-    print("\nFetching data...")
-    data = {}
-    
-    for inst in instruments:
-        df = data_manager.fetch_data(
-            instrument=inst,
-            timeframe=settings.timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
-        if df is not None and len(df) > 100:
-            data[inst] = df
-            print(f"  ✓ {inst}: {len(df)} bars")
-        else:
-            print(f"  ✗ {inst}: insufficient data")
-    
-    print(f"\nLoaded {len(data)} instruments")
-    
-    # Initialize analyzers
-    correlation_analyzer = CorrelationAnalyzer(
-        window=settings.spread.regression_window
-    )
-    cointegration_analyzer = CointegrationAnalyzer()
-    spread_builder = SpreadBuilder(
-        regression_window=settings.spread.regression_window,
-        zscore_window=settings.spread.zscore_window
-    )
-    
-    # Analyze all pairs
-    print("\nAnalyzing pairs...")
-    results = []
-    
-    instruments_list = list(data.keys())
-    total_pairs = len(instruments_list) * (len(instruments_list) - 1) // 2
-    analyzed = 0
-    
-    for i, inst_a in enumerate(instruments_list):
-        for inst_b in instruments_list[i+1:]:
-            analyzed += 1
-            
+        
+        bars_per_day = 24
+        count = days * bars_per_day
+        
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
+        
+        print(f"\nLoading data for {len(symbols)} symbols...")
+        
+        symbol_data = {}
+        for symbol in symbols:
             try:
-                # Get aligned prices
-                price_a = data[inst_a]['close']
-                price_b = data[inst_b]['close']
+                data = data_manager.get_close_prices(symbol, mt5_tf, count)
+                if len(data) >= 200:
+                    symbol_data[symbol] = data
+                    print(f"  ✓ {symbol}: {len(data)} bars")
+                else:
+                    print(f"  ✗ {symbol}: insufficient data")
+            except Exception as e:
+                print(f"  ✗ {symbol}: {e}")
+        
+        print(f"\n✓ Loaded {len(symbol_data)} symbols")
+        
+        # Analyze pairs
+        print("\n" + "-"*60)
+        print("ANALYZING PAIRS...")
+        print("-"*60)
+        
+        corr_analyzer = CorrelationAnalyzer(window=settings.spread.correlation_window)
+        coint_analyzer = CointegrationAnalyzer()
+        spread_builder = SpreadBuilder(
+            regression_window=settings.spread.regression_window,
+            zscore_window=settings.spread.zscore_window
+        )
+        
+        tradeable_pairs = []
+        symbols_list = list(symbol_data.keys())
+        
+        total_pairs = len(symbols_list) * (len(symbols_list) - 1) // 2
+        analyzed = 0
+        
+        for i, symbol_a in enumerate(symbols_list):
+            for symbol_b in symbols_list[i+1:]:
+                analyzed += 1
                 
-                # Align
+                price_a = symbol_data[symbol_a]
+                price_b = symbol_data[symbol_b]
+                
+                # Align data
                 common_idx = price_a.index.intersection(price_b.index)
                 if len(common_idx) < 200:
                     continue
                 
-                price_a = price_a.loc[common_idx]
-                price_b = price_b.loc[common_idx]
+                price_a_aligned = price_a.loc[common_idx]
+                price_b_aligned = price_b.loc[common_idx]
                 
                 # Correlation
-                corr_result = correlation_analyzer.analyze_pair(price_a, price_b)
+                corr_result = corr_analyzer.analyze_pair(price_a_aligned, price_b_aligned)
                 
-                # Skip low correlation pairs early
-                if corr_result.current_correlation < 0.5:
+                if corr_result.current_correlation < settings.spread.min_correlation:
                     continue
                 
                 # Cointegration
-                coint_result = cointegration_analyzer.engle_granger_test(
-                    price_a, price_b
-                )
+                coint_result = coint_analyzer.engle_granger_test(price_a_aligned, price_b_aligned)
+                
+                if not coint_result.is_cointegrated:
+                    continue
                 
                 # Spread metrics
-                spread_metrics = spread_builder.get_spread_metrics(price_a, price_b)
+                metrics = spread_builder.get_spread_metrics(price_a_aligned, price_b_aligned)
                 
-                results.append({
-                    'Pair': f"{inst_a}/{inst_b}",
-                    'Corr': corr_result.current_correlation,
-                    'Corr_Stab': corr_result.stability_score,
-                    'Coint_p': coint_result.p_value,
-                    'Coint': '✓' if coint_result.is_cointegrated else '✗',
-                    'Hedge': coint_result.hedge_ratio,
-                    'Half_Life': coint_result.half_life,
-                    'Hurst': spread_metrics.hurst_exponent if spread_metrics else None,
-                    'Z-Score': spread_metrics.zscore if spread_metrics else None
+                if metrics is None:
+                    continue
+                
+                if metrics.half_life > settings.spread.max_half_life:
+                    continue
+                
+                # Current z-score
+                spread_data = spread_builder.build_spread_with_zscore(price_a_aligned, price_b_aligned)
+                current_zscore = spread_data['zscore'].iloc[-1]
+                
+                tradeable_pairs.append({
+                    'pair': (symbol_a, symbol_b),
+                    'correlation': corr_result.current_correlation,
+                    'stability': corr_result.stability_score,
+                    'p_value': coint_result.p_value,
+                    'hedge_ratio': coint_result.hedge_ratio,
+                    'half_life': coint_result.half_life,
+                    'hurst': metrics.hurst_exponent,
+                    'zscore': current_zscore
                 })
-                
-            except Exception as e:
-                continue
-    
-    print(f"Analyzed {analyzed} pairs")
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(results)
-    
-    if len(df) == 0:
-        print("\nNo tradeable pairs found!")
-        return
-    
-    # Sort by correlation stability
-    df = df.sort_values('Corr_Stab', ascending=False)
-    
-    # Print all results
-    print("\n" + "="*60)
-    print("ALL ANALYZED PAIRS")
-    print("="*60)
-    
-    pd.set_option('display.max_rows', None)
-    pd.set_option('display.width', None)
-    pd.set_option('display.float_format', '{:.3f}'.format)
-    
-    print(df.to_string(index=False))
-    
-    # Filter tradeable pairs
-    print("\n" + "="*60)
-    print("TRADEABLE PAIRS (meeting all criteria)")
-    print("="*60)
-    
-    tradeable = df[
-        (df['Corr'] >= settings.spread.min_correlation) &
-        (df['Coint'] == '✓') &
-        (df['Half_Life'] <= settings.spread.max_half_life) &
-        (df['Half_Life'] > 0)
-    ].copy()
-    
-    if len(tradeable) > 0:
-        print(f"\nCriteria:")
-        print(f"  - Correlation >= {settings.spread.min_correlation}")
-        print(f"  - Cointegrated (p < 0.05)")
-        print(f"  - Half-life <= {settings.spread.max_half_life} bars")
-        print(f"\nFound {len(tradeable)} tradeable pairs:\n")
-        print(tradeable.to_string(index=False))
         
-        # Best pair recommendation
-        best = tradeable.iloc[0]
-        print(f"\n{'='*60}")
-        print("RECOMMENDED PAIR")
-        print(f"{'='*60}")
-        print(f"\n  {best['Pair']}")
-        print(f"  Correlation: {best['Corr']:.3f}")
-        print(f"  Stability Score: {best['Corr_Stab']:.3f}")
-        print(f"  Half-Life: {best['Half_Life']:.1f} bars")
-        print(f"  Current Z-Score: {best['Z-Score']:.2f}")
+        print(f"\n✓ Analyzed {analyzed} pairs")
+        print(f"✓ Found {len(tradeable_pairs)} tradeable pairs")
         
-        # Trading opportunity
-        zscore = best['Z-Score']
-        if zscore <= -settings.spread.entry_zscore:
-            print(f"\n  🟢 POTENTIAL LONG SPREAD ENTRY (z={zscore:.2f})")
-        elif zscore >= settings.spread.entry_zscore:
-            print(f"\n  🔴 POTENTIAL SHORT SPREAD ENTRY (z={zscore:.2f})")
+        # Display results
+        print("\n" + "="*60)
+        print("TRADEABLE PAIRS")
+        print("="*60)
+        
+        # Sort by correlation
+        tradeable_pairs.sort(key=lambda x: x['correlation'], reverse=True)
+        
+        for i, p in enumerate(tradeable_pairs, 1):
+            symbol_a, symbol_b = p['pair']
+            
+            print(f"\n{i}. {symbol_a}/{symbol_b}")
+            print(f"   Correlation: {p['correlation']:.3f} (stability: {p['stability']:.2f})")
+            print(f"   Coint p-val: {p['p_value']:.4f}")
+            print(f"   Hedge ratio: {p['hedge_ratio']:.4f}")
+            print(f"   Half-life:   {p['half_life']:.1f} bars")
+            print(f"   Hurst exp:   {p['hurst']:.3f}")
+            print(f"   Z-score:     {p['zscore']:+.2f}")
+            
+            # Trading signal
+            if abs(p['zscore']) >= settings.spread.entry_zscore:
+                if p['zscore'] <= -settings.spread.entry_zscore:
+                    print(f"   → SIGNAL: LONG SPREAD (buy {symbol_a}, sell {symbol_b})")
+                else:
+                    print(f"   → SIGNAL: SHORT SPREAD (sell {symbol_a}, buy {symbol_b})")
+        
+        # Summary
+        print("\n" + "-"*60)
+        print("TRADING OPPORTUNITIES")
+        print("-"*60)
+        
+        signals = [p for p in tradeable_pairs if abs(p['zscore']) >= settings.spread.entry_zscore]
+        
+        if signals:
+            print(f"\n{len(signals)} pairs with entry signals:")
+            for p in signals:
+                symbol_a, symbol_b = p['pair']
+                direction = "LONG" if p['zscore'] < 0 else "SHORT"
+                print(f"  {symbol_a}/{symbol_b}: {direction} SPREAD (Z={p['zscore']:+.2f})")
         else:
-            print(f"\n  ⏸ No immediate trading signal")
-    else:
-        print("\nNo pairs meet all criteria.")
-        print("Try adjusting the screening parameters in settings.")
+            print("\nNo entry signals at current levels.")
+        
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        raise
+    finally:
+        if 'client' in locals():
+            client.disconnect()
     
     print("\n" + "="*60)
     print("SCREENING COMPLETE")

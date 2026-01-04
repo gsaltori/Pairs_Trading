@@ -1,7 +1,5 @@
-"""
-Execution module for the Pairs Trading System.
-"""
+"""Execution module - Live trading via MT5."""
 
-from .executor import LiveExecutor, OrderResult, ExecutionState
+from src.execution.executor import LiveExecutor, PairPosition, ExecutionState
 
-__all__ = ['LiveExecutor', 'OrderResult', 'ExecutionState']
+__all__ = ['LiveExecutor', 'PairPosition', 'ExecutionState']

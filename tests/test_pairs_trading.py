@@ -152,7 +152,7 @@ class TestSignalGenerator:
         
         # Test long spread signal
         signal = generator.generate_entry_signal(
-            pair=('EUR_USD', 'GBP_USD'),
+            pair=('EURUSD', 'GBPUSD'),
             zscore=-2.5,
             correlation=0.8,
             hedge_ratio=1.0,
@@ -164,7 +164,7 @@ class TestSignalGenerator:
         
         # Test short spread signal
         signal = generator.generate_entry_signal(
-            pair=('EUR_USD', 'GBP_USD'),
+            pair=('EURUSD', 'GBPUSD'),
             zscore=2.5,
             correlation=0.8,
             hedge_ratio=1.0,
@@ -179,7 +179,7 @@ class TestSignalGenerator:
         generator = SignalGenerator(settings)
         
         signal = generator.generate_entry_signal(
-            pair=('EUR_USD', 'GBP_USD'),
+            pair=('EURUSD', 'GBPUSD'),
             zscore=-2.5,
             correlation=0.5,  # Below threshold
             hedge_ratio=1.0,
@@ -194,7 +194,7 @@ class TestSignalGenerator:
         
         # Test mean reversion exit
         signal = generator.generate_exit_signal(
-            pair=('EUR_USD', 'GBP_USD'),
+            pair=('EURUSD', 'GBPUSD'),
             zscore=0.1,  # Near zero
             correlation=0.8,
             current_direction='long_spread'
@@ -208,7 +208,7 @@ class TestSignalGenerator:
         generator = SignalGenerator(settings)
         
         signal = generator.generate_exit_signal(
-            pair=('EUR_USD', 'GBP_USD'),
+            pair=('EURUSD', 'GBPUSD'),
             zscore=-4.0,  # Extreme
             correlation=0.8,
             current_direction='long_spread'
@@ -230,10 +230,10 @@ class TestSettings:
         assert settings.risk.max_risk_per_trade == 0.01
     
     def test_timeframe_conversion(self):
-        """Test timeframe to OANDA granularity."""
-        assert Timeframe.H1.to_oanda() == 'H1'
-        assert Timeframe.M15.to_oanda() == 'M15'
-        assert Timeframe.D.to_oanda() == 'D'
+        """Test timeframe to MT5 string."""
+        assert Timeframe.H1.to_mt5() == 'H1'
+        assert Timeframe.M15.to_mt5() == 'M15'
+        assert Timeframe.D1.to_mt5() == 'D1'
 
 
 # Integration Tests

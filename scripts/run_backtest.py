@@ -1,24 +1,24 @@
 """
-Example: Run a complete backtest on EUR_USD/GBP_USD pair.
+Example: Run backtest for a currency pair.
 
 This script demonstrates how to:
-1. Initialize the trading system
-2. Run a backtest
-3. Analyze results
-4. Generate a report
+1. Connect to MT5
+2. Load historical data
+3. Run a backtest
+4. Display results
 """
 
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config.settings import Settings
-from config.broker_config import BrokerConfig
-from src.data.broker_client import OandaClient
+from config.settings import Settings, Timeframe
+from config.broker_config import MT5Config
+from src.data.broker_client import MT5Client, Timeframe as MT5Timeframe
 from src.data.data_manager import DataManager
 from src.backtest.backtest_engine import BacktestEngine
 
@@ -26,100 +26,110 @@ from src.backtest.backtest_engine import BacktestEngine
 def main():
     """Run backtest example."""
     print("="*60)
-    print("PAIRS TRADING BACKTEST EXAMPLE")
+    print("PAIRS TRADING BACKTEST")
     print("="*60)
     
     # Configuration
-    pair = ('EUR_USD', 'GBP_USD')
-    days_of_history = 365
-    
-    # Initialize settings
-    settings = Settings()
-    
-    # Optionally customize parameters
-    settings.spread.entry_zscore = 2.0
-    settings.spread.exit_zscore = 0.2
-    settings.spread.stop_loss_zscore = 3.0
-    settings.backtest.initial_capital = 10000
+    pair = ("EURUSD", "GBPUSD")
+    days = 365
+    timeframe = Timeframe.H1
     
     print(f"\nPair: {pair[0]}/{pair[1]}")
-    print(f"History: {days_of_history} days")
-    print(f"Initial Capital: ${settings.backtest.initial_capital:,.0f}")
-    print(f"Entry Z-Score: ±{settings.spread.entry_zscore}")
-    print(f"Exit Z-Score: ±{settings.spread.exit_zscore}")
+    print(f"Period: {days} days")
+    print(f"Timeframe: {timeframe.value}")
     
-    # Load broker config
+    # Initialize
+    settings = Settings()
+    
     try:
-        broker_config = BrokerConfig.from_env()
-        print("\n✓ Loaded OANDA credentials from environment")
-    except Exception as e:
-        print(f"\n⚠ Could not load OANDA credentials: {e}")
-        print("Using cached data only (if available)")
-        broker_config = None
-    
-    # Initialize data manager
-    if broker_config:
-        client = OandaClient(broker_config)
+        # Connect to MT5
+        config = MT5Config.from_env()
+        client = MT5Client(config)
+        
+        if not client.connect():
+            print("\nERROR: Could not connect to MT5")
+            print("Make sure MT5 terminal is running and credentials are correct.")
+            return
+        
+        print("\n✓ Connected to MT5")
+        
+        # Get account info
+        account = client.get_account_info()
+        print(f"✓ Account: {account.get('login')}")
+        print(f"✓ Balance: ${account.get('balance', 0):,.2f}")
+        
+        # Load data
         data_manager = DataManager(client, settings.paths.cache_dir)
-    else:
-        data_manager = None
-    
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_of_history)
-    
-    print(f"\nDate Range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-    
-    # Fetch data
-    print("\nFetching data...")
-    
-    if data_manager:
-        data_a = data_manager.fetch_data(
-            instrument=pair[0],
-            timeframe=settings.timeframe,
-            start_date=start_date,
-            end_date=end_date
+        
+        bars_per_day = 24  # H1
+        count = days * bars_per_day
+        
+        print(f"\nLoading {count} bars of data...")
+        
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
+        price_a, price_b = data_manager.get_pair_data(
+            pair[0], pair[1], mt5_tf, count
         )
         
-        data_b = data_manager.fetch_data(
-            instrument=pair[1],
-            timeframe=settings.timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
-    else:
-        print("ERROR: No data manager available. Set up OANDA credentials.")
-        return
-    
-    if data_a is None or data_b is None:
-        print("ERROR: Could not fetch data")
-        return
-    
-    print(f"✓ Loaded {len(data_a)} bars for {pair[0]}")
-    print(f"✓ Loaded {len(data_b)} bars for {pair[1]}")
-    
-    # Run backtest
-    print("\nRunning backtest...")
-    
-    engine = BacktestEngine(settings, data_manager)
-    result = engine.run_backtest(pair, data_a, data_b)
-    
-    # Print results
-    print(result.summary())
-    
-    # Save results
-    result_file = settings.paths.backtest_results / f"backtest_{pair[0]}_{pair[1]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    engine.save_results(result, str(result_file))
-    print(f"\n✓ Results saved to: {result_file}")
-    
-    # Print trade log
-    if result.trades:
+        if len(price_a) == 0:
+            print("ERROR: No data received")
+            return
+        
+        print(f"✓ Loaded {len(price_a)} bars")
+        print(f"  Period: {price_a.index[0]} to {price_a.index[-1]}")
+        
+        # Run backtest
         print("\n" + "-"*60)
-        print("TRADE LOG (First 10 trades)")
+        print("RUNNING BACKTEST...")
         print("-"*60)
         
-        trades_df = engine.get_trades_dataframe()
-        print(trades_df.head(10).to_string())
+        engine = BacktestEngine(settings)
+        result = engine.run_backtest(pair, price_a, price_b)
+        
+        if result is None:
+            print("ERROR: Backtest failed")
+            return
+        
+        # Display results
+        print("\n" + "="*60)
+        print("BACKTEST RESULTS")
+        print("="*60)
+        
+        print(f"\nPerformance:")
+        print(f"  Total Return:    {result.total_return:>10.2%}")
+        print(f"  Annual Return:   {result.annual_return:>10.2%}")
+        print(f"  Sharpe Ratio:    {result.sharpe_ratio:>10.2f}")
+        print(f"  Sortino Ratio:   {result.sortino_ratio:>10.2f}")
+        print(f"  Calmar Ratio:    {result.calmar_ratio:>10.2f}")
+        
+        print(f"\nRisk Metrics:")
+        print(f"  Max Drawdown:    {result.max_drawdown:>10.2%}")
+        print(f"  Volatility:      {result.volatility:>10.2%}")
+        
+        print(f"\nTrade Statistics:")
+        print(f"  Total Trades:    {result.total_trades:>10}")
+        print(f"  Win Rate:        {result.win_rate:>10.1%}")
+        print(f"  Profit Factor:   {result.profit_factor:>10.2f}")
+        print(f"  Avg Trade:       ${result.avg_trade:>9.2f}")
+        print(f"  Avg Win:         ${result.avg_win:>9.2f}")
+        print(f"  Avg Loss:        ${result.avg_loss:>9.2f}")
+        
+        print(f"\nCapital:")
+        print(f"  Initial:         ${result.initial_capital:>9,.2f}")
+        print(f"  Final:           ${result.final_capital:>9,.2f}")
+        print(f"  Net Profit:      ${result.final_capital - result.initial_capital:>9,.2f}")
+        
+        # Save results
+        results_path = Path(settings.paths.backtest_dir) / f"{pair[0]}_{pair[1]}_{datetime.now():%Y%m%d_%H%M%S}.json"
+        engine.save_results(result, str(results_path))
+        print(f"\n✓ Results saved to: {results_path}")
+        
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        raise
+    finally:
+        if 'client' in locals():
+            client.disconnect()
     
     print("\n" + "="*60)
     print("BACKTEST COMPLETE")

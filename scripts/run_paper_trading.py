@@ -10,7 +10,7 @@ This script demonstrates how to:
 
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 import logging
 
@@ -18,9 +18,9 @@ import logging
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config.settings import Settings, TradingMode
-from config.broker_config import BrokerConfig
-from src.data.broker_client import OandaClient
+from config.settings import Settings, TradingMode, Timeframe
+from config.broker_config import MT5Config
+from src.data.broker_client import MT5Client, Timeframe as MT5Timeframe
 from src.data.data_manager import DataManager
 from src.strategy.pairs_strategy import PairsStrategy
 from src.risk.risk_manager import RiskManager
@@ -47,8 +47,8 @@ def main():
     
     # Configuration
     pairs = [
-        ('EUR_USD', 'GBP_USD'),
-        ('AUD_USD', 'NZD_USD')
+        ('EURUSD', 'GBPUSD'),
+        ('AUDUSD', 'NZDUSD')
     ]
     check_interval = 60  # seconds
     
@@ -61,26 +61,33 @@ def main():
     settings = Settings()
     settings.mode = TradingMode.PAPER
     
-    # Load broker config
+    # Connect to MT5
     try:
-        broker_config = BrokerConfig.from_env()
-        client = OandaClient(broker_config)
-        print("\n✓ Connected to OANDA")
+        config = MT5Config.from_env()
+        client = MT5Client(config)
+        
+        if not client.connect():
+            print("\nERROR: Could not connect to MT5")
+            print("Make sure MT5 terminal is running and credentials are correct.")
+            return
+        
+        print("\n✓ Connected to MT5")
         
         # Verify account
-        account = client.get_account_summary()
-        print(f"✓ Account: {account.get('id', 'N/A')}")
-        print(f"✓ Balance: ${float(account.get('balance', 0)):,.2f}")
+        account = client.get_account_info()
+        print(f"✓ Account: {account.get('login')}")
+        print(f"✓ Server: {account.get('server')}")
+        print(f"✓ Balance: ${account.get('balance', 0):,.2f}")
         
     except Exception as e:
-        print(f"\nERROR: Could not connect to OANDA: {e}")
+        print(f"\nERROR: Could not connect to MT5: {e}")
         return
     
     # Initialize components
     data_manager = DataManager(client, settings.paths.cache_dir)
     risk_manager = RiskManager(settings, float(account.get('balance', 10000)))
     strategy = PairsStrategy(settings, data_manager)
-    executor = LiveExecutor(settings, broker_config, risk_manager)
+    executor = LiveExecutor(settings, config, risk_manager)
     
     # Start executor
     executor.start()
@@ -178,6 +185,7 @@ def main():
     
     finally:
         executor.stop()
+        client.disconnect()
         
         # Final summary
         print("\n" + "="*60)
@@ -203,4 +211,6 @@ def main():
 
 
 if __name__ == '__main__':
+    # Create logs directory
+    Path('logs').mkdir(exist_ok=True)
     main()

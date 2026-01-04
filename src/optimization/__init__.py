@@ -1,7 +1,15 @@
-"""
-Optimization module for the Pairs Trading System.
-"""
+"""Optimization module - Walk-forward optimization."""
 
-from .optimizer import WalkForwardOptimizer, OptimizationResult
+from src.optimization.optimizer import (
+    WalkForwardOptimizer,
+    WalkForwardResult,
+    WalkForwardPeriod,
+    OptimizationParams
+)
 
-__all__ = ['WalkForwardOptimizer', 'OptimizationResult']
+__all__ = [
+    'WalkForwardOptimizer',
+    'WalkForwardResult',
+    'WalkForwardPeriod',
+    'OptimizationParams'
+]

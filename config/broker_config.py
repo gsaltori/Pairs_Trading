@@ -1,188 +1,132 @@
 """
-Broker configuration for OANDA API.
+Broker Configuration for MetaTrader 5 (IC Markets Global).
 
-OANDA is chosen for its:
-- Reliable REST API
-- Good documentation
-- Practice accounts available
-- Reasonable spreads
-- Python SDK available (oandapyV20)
+Handles MT5 connection settings and credentials.
 """
 
-from dataclasses import dataclass
-from typing import Optional
-from enum import Enum
 import os
+from dataclasses import dataclass, field
+from typing import Optional
 from pathlib import Path
 
 
-class OandaEnvironment(Enum):
-    """OANDA API environments."""
-    PRACTICE = "practice"
-    LIVE = "live"
+@dataclass
+class MT5Config:
+    """MetaTrader 5 configuration for IC Markets Global."""
+    
+    # Connection settings
+    login: int = 0
+    password: str = ""
+    server: str = "ICMarketsSC-Demo"  # or "ICMarketsSC-Live"
+    
+    # MT5 terminal path (optional, auto-detected if not specified)
+    terminal_path: Optional[str] = None
+    
+    # Timeout settings
+    timeout: int = 60000  # milliseconds
+    
+    # Trading settings
+    magic_number: int = 123456  # Unique identifier for EA orders
+    deviation: int = 20  # Maximum price deviation in points
+    
+    # Symbol suffix (some brokers add suffix like ".a" or "m")
+    symbol_suffix: str = ""
+    
+    @classmethod
+    def from_env(cls) -> 'MT5Config':
+        """Load configuration from environment variables."""
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        login = os.getenv('MT5_LOGIN', '0')
+        
+        return cls(
+            login=int(login) if login else 0,
+            password=os.getenv('MT5_PASSWORD', ''),
+            server=os.getenv('MT5_SERVER', 'ICMarketsSC-Demo'),
+            terminal_path=os.getenv('MT5_TERMINAL_PATH'),
+            timeout=int(os.getenv('MT5_TIMEOUT', '60000')),
+            magic_number=int(os.getenv('MT5_MAGIC_NUMBER', '123456')),
+            deviation=int(os.getenv('MT5_DEVIATION', '20')),
+            symbol_suffix=os.getenv('MT5_SYMBOL_SUFFIX', '')
+        )
+    
+    @classmethod
+    def from_yaml(cls, path: str) -> 'MT5Config':
+        """Load configuration from YAML file."""
+        import yaml
+        
+        with open(path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        mt5_config = config.get('mt5', {})
+        
+        return cls(
+            login=mt5_config.get('login', 0),
+            password=mt5_config.get('password', ''),
+            server=mt5_config.get('server', 'ICMarketsSC-Demo'),
+            terminal_path=mt5_config.get('terminal_path'),
+            timeout=mt5_config.get('timeout', 60000),
+            magic_number=mt5_config.get('magic_number', 123456),
+            deviation=mt5_config.get('deviation', 20),
+            symbol_suffix=mt5_config.get('symbol_suffix', '')
+        )
+    
+    def get_symbol(self, base_symbol: str) -> str:
+        """Get full symbol name with suffix if applicable."""
+        return f"{base_symbol}{self.symbol_suffix}"
+    
+    def validate(self) -> bool:
+        """Validate configuration."""
+        if self.login <= 0:
+            raise ValueError("MT5 login must be a positive integer")
+        if not self.password:
+            raise ValueError("MT5 password is required")
+        if not self.server:
+            raise ValueError("MT5 server is required")
+        return True
 
 
 @dataclass
-class BrokerConfig:
-    """OANDA broker configuration."""
-    
-    # API credentials (loaded from environment variables for security)
-    api_key: str = ""
-    account_id: str = ""
-    
-    # Environment
-    environment: OandaEnvironment = OandaEnvironment.PRACTICE
-    
-    # API URLs
-    @property
-    def api_url(self) -> str:
-        """Get API URL based on environment."""
-        if self.environment == OandaEnvironment.PRACTICE:
-            return "https://api-fxpractice.oanda.com"
-        return "https://api-fxtrade.oanda.com"
-    
-    @property
-    def stream_url(self) -> str:
-        """Get streaming URL based on environment."""
-        if self.environment == OandaEnvironment.PRACTICE:
-            return "https://stream-fxpractice.oanda.com"
-        return "https://stream-fxtrade.oanda.com"
-    
-    # Request settings
-    request_timeout: int = 30
-    max_retries: int = 3
-    retry_delay: float = 1.0
-    
-    # Rate limiting
-    requests_per_second: int = 10
-    
-    # Data fetching
-    max_candles_per_request: int = 5000
-    
-    @classmethod
-    def from_env(cls) -> 'BrokerConfig':
-        """
-        Load configuration from environment variables.
-        
-        Required environment variables:
-        - OANDA_API_KEY: Your OANDA API key
-        - OANDA_ACCOUNT_ID: Your OANDA account ID
-        - OANDA_ENVIRONMENT: 'practice' or 'live' (default: practice)
-        """
-        config = cls()
-        config.api_key = os.getenv('OANDA_API_KEY', '')
-        config.account_id = os.getenv('OANDA_ACCOUNT_ID', '')
-        
-        env_str = os.getenv('OANDA_ENVIRONMENT', 'practice').lower()
-        config.environment = OandaEnvironment(env_str)
-        
-        return config
-    
-    @classmethod
-    def from_file(cls, filepath: Path) -> 'BrokerConfig':
-        """
-        Load configuration from a credentials file.
-        
-        File format (JSON):
-        {
-            "api_key": "your-api-key",
-            "account_id": "your-account-id",
-            "environment": "practice"
-        }
-        """
-        import json
-        
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        
-        config = cls()
-        config.api_key = data.get('api_key', '')
-        config.account_id = data.get('account_id', '')
-        config.environment = OandaEnvironment(data.get('environment', 'practice'))
-        
-        return config
-    
-    def validate(self) -> bool:
-        """Validate that required credentials are present."""
-        if not self.api_key:
-            raise ValueError("OANDA API key not configured. Set OANDA_API_KEY environment variable.")
-        if not self.account_id:
-            raise ValueError("OANDA account ID not configured. Set OANDA_ACCOUNT_ID environment variable.")
-        return True
-    
-    def save_template(self, filepath: Path) -> None:
-        """Save a template credentials file."""
-        import json
-        
-        template = {
-            "api_key": "YOUR_API_KEY_HERE",
-            "account_id": "YOUR_ACCOUNT_ID_HERE",
-            "environment": "practice"
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(template, f, indent=2)
-        
-        print(f"Template saved to {filepath}")
-        print("IMPORTANT: Add this file to .gitignore!")
+class SymbolInfo:
+    """Information about a trading symbol."""
+    name: str
+    digits: int
+    point: float
+    trade_tick_size: float
+    trade_tick_value: float
+    volume_min: float
+    volume_max: float
+    volume_step: float
+    trade_contract_size: float
+    spread: int
+    swap_long: float
+    swap_short: float
+    margin_initial: float
+    currency_base: str
+    currency_profit: str
+    description: str
 
 
-# Forex instrument specifications for OANDA
-OANDA_INSTRUMENTS = {
-    "EUR_USD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "GBP_USD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "USD_JPY": {"pip_location": -2, "display_precision": 3, "trade_units_precision": 0},
-    "USD_CHF": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "AUD_USD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "NZD_USD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "EUR_GBP": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "EUR_JPY": {"pip_location": -2, "display_precision": 3, "trade_units_precision": 0},
-    "EUR_CHF": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "GBP_JPY": {"pip_location": -2, "display_precision": 3, "trade_units_precision": 0},
-    "GBP_CHF": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "AUD_NZD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-    "USD_CAD": {"pip_location": -4, "display_precision": 5, "trade_units_precision": 0},
-}
+# Default Forex pairs for IC Markets
+IC_MARKETS_FOREX_PAIRS = [
+    "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
+    "AUDUSD", "NZDUSD", "USDCAD",
+    "EURJPY", "GBPJPY", "AUDJPY", "NZDJPY",
+    "EURGBP", "EURAUD", "EURNZD", "EURCHF",
+    "GBPAUD", "GBPNZD", "GBPCHF", "GBPCAD",
+    "AUDNZD", "AUDCAD", "AUDCHF",
+    "NZDCAD", "NZDCHF", "CADCHF", "CADJPY"
+]
 
-
-def get_pip_value(instrument: str, units: float, current_price: float, account_currency: str = "USD") -> float:
-    """
-    Calculate pip value for a given instrument and position size.
-    
-    Args:
-        instrument: OANDA instrument name (e.g., 'EUR_USD')
-        units: Position size in units
-        current_price: Current price of the instrument
-        account_currency: Account base currency
-    
-    Returns:
-        Pip value in account currency
-    """
-    if instrument not in OANDA_INSTRUMENTS:
-        raise ValueError(f"Unknown instrument: {instrument}")
-    
-    spec = OANDA_INSTRUMENTS[instrument]
-    pip_location = spec['pip_location']
-    pip_size = 10 ** pip_location
-    
-    base_currency = instrument[:3]
-    quote_currency = instrument[4:]
-    
-    # Standard pip value calculation
-    pip_value = units * pip_size
-    
-    # Convert to account currency if needed
-    if quote_currency != account_currency:
-        # Would need current exchange rate for conversion
-        # For simplicity, assuming USD account
-        if account_currency == "USD":
-            if quote_currency == "JPY":
-                # Need USD/JPY rate
-                pip_value = pip_value / current_price
-            elif base_currency == "USD":
-                pip_value = pip_value
-            else:
-                # More complex conversion needed
-                pass
-    
-    return pip_value
+# Default pairs for Pairs Trading analysis
+DEFAULT_PAIR_CANDIDATES = [
+    ("EURUSD", "GBPUSD"),    # European majors
+    ("AUDUSD", "NZDUSD"),    # Oceanic
+    ("EURJPY", "USDJPY"),    # Yen crosses
+    ("EURCHF", "USDCHF"),    # Swiss crosses
+    ("EURGBP", "GBPUSD"),    # GBP related
+    ("AUDUSD", "USDCAD"),    # Commodity currencies
+    ("EURUSD", "USDCHF"),    # Inverse relationship
+    ("GBPJPY", "USDJPY"),    # Yen crosses
+]

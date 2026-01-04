@@ -1,21 +1,19 @@
 """
-Pairs Trading Strategy
+Pairs Trading Strategy Module.
 
-Main strategy class that orchestrates all components
-for pairs trading execution.
+Orchestrates the complete trading strategy.
 """
 
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional, List, Dict, Tuple
 import logging
 
-import sys
-sys.path.append(str(__file__).rsplit('\\', 3)[0])
-
-from config.settings import Settings
+from config.settings import Settings, Timeframe
+from src.data.broker_client import Timeframe as MT5Timeframe
+from src.data.data_manager import DataManager
 from src.analysis.correlation import CorrelationAnalyzer, CorrelationResult
 from src.analysis.cointegration import CointegrationAnalyzer, CointegrationResult
 from src.analysis.spread_builder import SpreadBuilder, SpreadMetrics
@@ -26,413 +24,332 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PairState:
-    """Current state for a tradeable pair."""
+class PairAnalysis:
+    """Complete analysis of a trading pair."""
     pair: Tuple[str, str]
-    spread_data: pd.DataFrame
-    correlation_result: CorrelationResult
-    cointegration_result: Optional[CointegrationResult]
-    spread_metrics: SpreadMetrics
-    current_signal: Signal
-    position: Optional[SignalType] = None
-    entry_zscore: Optional[float] = None
-    entry_time: Optional[datetime] = None
-    entry_hedge_ratio: Optional[float] = None
-    is_tradeable: bool = True
-    tradeable_reason: str = ""
-
-
-@dataclass
-class StrategyState:
-    """Overall strategy state."""
     timestamp: datetime
-    pairs: Dict[Tuple[str, str], PairState] = field(default_factory=dict)
-    open_positions: int = 0
-    total_exposure: float = 0.0
+    correlation_result: Optional[CorrelationResult]
+    cointegration_result: Optional[CointegrationResult]
+    spread_metrics: Optional[SpreadMetrics]
+    current_signal: Optional[Signal]
+    is_tradeable: bool
+    rejection_reason: Optional[str] = None
 
 
 class PairsStrategy:
     """
-    Main Pairs Trading Strategy.
+    Main pairs trading strategy implementation.
     
-    Orchestrates:
-    - Pair analysis and screening
+    Combines:
+    - Correlation analysis
+    - Cointegration testing
+    - Spread construction
     - Signal generation
-    - Position tracking
-    - Strategy state management
     """
     
-    def __init__(self, settings: Settings):
+    def __init__(
+        self,
+        settings: Settings,
+        data_manager: DataManager
+    ):
         """
-        Initialize the Pairs Strategy.
+        Initialize strategy.
         
         Args:
-            settings: System settings
+            settings: Trading settings
+            data_manager: Data manager instance
         """
         self.settings = settings
+        self.data_manager = data_manager
         
-        # Initialize components
-        self.correlation_analyzer = CorrelationAnalyzer(settings)
-        self.cointegration_analyzer = CointegrationAnalyzer(settings)
-        self.spread_builder = SpreadBuilder(settings)
+        # Initialize analyzers
+        self.correlation_analyzer = CorrelationAnalyzer(
+            window=settings.spread.correlation_window,
+            min_correlation=settings.spread.min_correlation
+        )
+        
+        self.cointegration_analyzer = CointegrationAnalyzer()
+        
+        self.spread_builder = SpreadBuilder(
+            regression_window=settings.spread.regression_window,
+            zscore_window=settings.spread.zscore_window,
+            recalculate_beta=settings.spread.recalc_hedge_ratio
+        )
+        
         self.signal_generator = SignalGenerator(settings)
         
-        # State
-        self._state: Optional[StrategyState] = None
-        self._pair_states: Dict[Tuple[str, str], PairState] = {}
+        # State tracking
+        self._positions: Dict[Tuple[str, str], str] = {}  # pair -> direction
+        self._last_analysis: Dict[Tuple[str, str], PairAnalysis] = {}
     
     def analyze_pair(
         self,
         pair: Tuple[str, str],
-        aligned_prices: pd.DataFrame
-    ) -> PairState:
+        timeframe: Optional[Timeframe] = None,
+        bars: int = 500
+    ) -> Optional[PairAnalysis]:
         """
         Perform complete analysis on a pair.
         
         Args:
-            pair: Instrument pair tuple
-            aligned_prices: DataFrame with aligned prices
+            pair: (symbol_a, symbol_b) tuple
+            timeframe: Analysis timeframe
+            bars: Number of bars to analyze
             
         Returns:
-            PairState with all analysis results
+            PairAnalysis or None
         """
-        logger.info(f"Analyzing pair: {pair}")
+        timeframe = timeframe or self.settings.timeframe
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
         
-        # Correlation analysis
-        corr_result = self.correlation_analyzer.analyze_pair(aligned_prices)
-        
-        # Cointegration analysis
         try:
-            coint_result = self.cointegration_analyzer.analyze_pair(aligned_prices)
-        except Exception as e:
-            logger.warning(f"Cointegration analysis failed for {pair}: {e}")
-            coint_result = None
-        
-        # Build spread
-        spread_data = self.spread_builder.build_spread_with_zscore(
-            aligned_prices.iloc[:, 0],
-            aligned_prices.iloc[:, 1]
-        )
-        
-        # Get spread metrics
-        if not spread_data.empty:
-            spread_metrics = self.spread_builder.get_spread_metrics(spread_data)
-        else:
-            spread_metrics = SpreadMetrics(
-                mean=0.0, std=1.0, current_value=0.0, zscore=0.0,
-                half_life=None, hedge_ratio=1.0, hurst_exponent=None
+            # Get data
+            price_a, price_b = self.data_manager.get_pair_data(
+                pair[0], pair[1], mt5_tf, bars
             )
-        
-        # Check if tradeable
-        is_tradeable, tradeable_reason = self._check_pair_tradeable(
-            corr_result, coint_result, spread_metrics
-        )
-        
-        # Generate signal
-        if is_tradeable and not spread_data.empty:
-            current_signal = self.signal_generator.generate_entry_signal(
+            
+            if len(price_a) < self.settings.backtest.min_bars_required:
+                return PairAnalysis(
+                    pair=pair,
+                    timestamp=datetime.now(),
+                    correlation_result=None,
+                    cointegration_result=None,
+                    spread_metrics=None,
+                    current_signal=None,
+                    is_tradeable=False,
+                    rejection_reason=f"Insufficient data: {len(price_a)} bars"
+                )
+            
+            # Correlation analysis
+            corr_result = self.correlation_analyzer.analyze_pair(price_a, price_b)
+            
+            if corr_result.current_correlation < self.settings.spread.min_correlation:
+                return PairAnalysis(
+                    pair=pair,
+                    timestamp=datetime.now(),
+                    correlation_result=corr_result,
+                    cointegration_result=None,
+                    spread_metrics=None,
+                    current_signal=None,
+                    is_tradeable=False,
+                    rejection_reason=f"Low correlation: {corr_result.current_correlation:.3f}"
+                )
+            
+            # Cointegration test
+            coint_result = self.cointegration_analyzer.engle_granger_test(price_a, price_b)
+            
+            # Spread metrics
+            spread_metrics = self.spread_builder.get_spread_metrics(price_a, price_b)
+            
+            if spread_metrics is None:
+                return PairAnalysis(
+                    pair=pair,
+                    timestamp=datetime.now(),
+                    correlation_result=corr_result,
+                    cointegration_result=coint_result,
+                    spread_metrics=None,
+                    current_signal=None,
+                    is_tradeable=False,
+                    rejection_reason="Failed to calculate spread metrics"
+                )
+            
+            # Check tradeability
+            is_tradeable = True
+            rejection_reason = None
+            
+            if not coint_result.is_cointegrated:
+                is_tradeable = False
+                rejection_reason = f"Not cointegrated (p={coint_result.p_value:.4f})"
+            
+            elif spread_metrics.half_life > self.settings.spread.max_half_life:
+                is_tradeable = False
+                rejection_reason = f"Half-life too long: {spread_metrics.half_life:.1f}"
+            
+            elif spread_metrics.half_life < self.settings.spread.min_half_life:
+                is_tradeable = False
+                rejection_reason = f"Half-life too short: {spread_metrics.half_life:.1f}"
+            
+            # Generate signal
+            current_position = self._positions.get(pair)
+            
+            signal = self.signal_generator.generate_composite_signal(
                 pair=pair,
                 zscore=spread_metrics.zscore,
                 correlation=corr_result.current_correlation,
                 hedge_ratio=spread_metrics.hedge_ratio,
-                timestamp=spread_data.index[-1]
+                half_life=spread_metrics.half_life,
+                current_position=current_position
             )
-        else:
-            current_signal = Signal(
-                signal_type=SignalType.NO_SIGNAL,
+            
+            analysis = PairAnalysis(
                 pair=pair,
                 timestamp=datetime.now(),
-                zscore=spread_metrics.zscore,
-                correlation=corr_result.current_correlation,
-                hedge_ratio=spread_metrics.hedge_ratio,
-                reason=tradeable_reason
+                correlation_result=corr_result,
+                cointegration_result=coint_result,
+                spread_metrics=spread_metrics,
+                current_signal=signal,
+                is_tradeable=is_tradeable,
+                rejection_reason=rejection_reason
             )
-        
-        return PairState(
-            pair=pair,
-            spread_data=spread_data,
-            correlation_result=corr_result,
-            cointegration_result=coint_result,
-            spread_metrics=spread_metrics,
-            current_signal=current_signal,
-            is_tradeable=is_tradeable,
-            tradeable_reason=tradeable_reason
-        )
-    
-    def _check_pair_tradeable(
-        self,
-        corr_result: CorrelationResult,
-        coint_result: Optional[CointegrationResult],
-        spread_metrics: SpreadMetrics
-    ) -> Tuple[bool, str]:
-        """
-        Check if a pair meets all trading criteria.
-        
-        Returns:
-            Tuple of (is_tradeable, reason)
-        """
-        # Check correlation
-        if corr_result.current_correlation < self.settings.spread_params.min_correlation:
-            return False, f"Low correlation: {corr_result.current_correlation:.3f}"
-        
-        if not corr_result.is_stable:
-            return False, "Unstable correlation"
-        
-        # Check cointegration
-        if coint_result and not coint_result.is_cointegrated:
-            return False, f"Not cointegrated (p={coint_result.p_value:.4f})"
-        
-        # Check half-life
-        if spread_metrics.half_life is not None:
-            if spread_metrics.half_life > self.settings.spread_params.max_half_life:
-                return False, f"Half-life too long: {spread_metrics.half_life:.1f}"
-        
-        # Check Hurst exponent
-        if spread_metrics.hurst_exponent is not None:
-            if spread_metrics.hurst_exponent > 0.5:
-                return False, f"Spread is trending (H={spread_metrics.hurst_exponent:.3f})"
-        
-        return True, "Pair is tradeable"
+            
+            # Cache analysis
+            self._last_analysis[pair] = analysis
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Analysis failed for {pair}: {e}")
+            return None
     
     def screen_pairs(
         self,
-        all_pairs_data: Dict[Tuple[str, str], pd.DataFrame]
-    ) -> List[PairState]:
+        symbols: List[str],
+        timeframe: Optional[Timeframe] = None,
+        bars: int = 500
+    ) -> List[PairAnalysis]:
         """
-        Screen all pairs and return tradeable ones.
+        Screen multiple symbols for tradeable pairs.
         
         Args:
-            all_pairs_data: Dictionary of aligned prices for each pair
+            symbols: List of symbols to analyze
+            timeframe: Analysis timeframe
+            bars: Number of bars
             
         Returns:
-            List of PairState for tradeable pairs
+            List of PairAnalysis for tradeable pairs
         """
-        tradeable_pairs = []
+        timeframe = timeframe or self.settings.timeframe
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
         
-        for pair, aligned_prices in all_pairs_data.items():
+        results = []
+        
+        # Load all data
+        symbol_data = {}
+        for symbol in symbols:
             try:
-                state = self.analyze_pair(pair, aligned_prices)
-                self._pair_states[pair] = state
-                
-                if state.is_tradeable:
-                    tradeable_pairs.append(state)
-                    logger.info(f"Pair {pair} is tradeable")
-                else:
-                    logger.debug(f"Pair {pair} not tradeable: {state.tradeable_reason}")
-                    
+                data = self.data_manager.get_close_prices(symbol, mt5_tf, bars)
+                if len(data) >= self.settings.backtest.min_bars_required:
+                    symbol_data[symbol] = data
             except Exception as e:
-                logger.error(f"Error analyzing pair {pair}: {e}")
+                logger.warning(f"Failed to load {symbol}: {e}")
+        
+        # Analyze all pairs
+        symbols_list = list(symbol_data.keys())
+        
+        for i, symbol_a in enumerate(symbols_list):
+            for symbol_b in symbols_list[i+1:]:
+                analysis = self.analyze_pair((symbol_a, symbol_b), timeframe, bars)
+                
+                if analysis and analysis.is_tradeable:
+                    results.append(analysis)
         
         # Sort by signal strength
-        tradeable_pairs.sort(
-            key=lambda x: self.signal_generator.calculate_signal_strength(
-                x.spread_metrics.zscore,
-                x.correlation_result.current_correlation,
-                x.spread_metrics.half_life
-            ),
+        results.sort(
+            key=lambda x: abs(x.spread_metrics.zscore) if x.spread_metrics else 0,
             reverse=True
         )
         
-        return tradeable_pairs
+        return results
     
-    def update_pair(
+    def get_signals(
         self,
-        pair: Tuple[str, str],
-        new_price_a: float,
-        new_price_b: float,
-        timestamp: datetime
-    ) -> PairState:
+        pairs: List[Tuple[str, str]],
+        timeframe: Optional[Timeframe] = None
+    ) -> List[Signal]:
         """
-        Update pair state with new prices.
+        Get current signals for multiple pairs.
         
         Args:
-            pair: Instrument pair
-            new_price_a: New price for instrument A
-            new_price_b: New price for instrument B
-            timestamp: Current timestamp
+            pairs: List of pairs to analyze
+            timeframe: Analysis timeframe
             
         Returns:
-            Updated PairState
+            List of active signals
         """
-        if pair not in self._pair_states:
-            raise ValueError(f"Pair {pair} not initialized")
+        signals = []
         
-        state = self._pair_states[pair]
+        for pair in pairs:
+            analysis = self.analyze_pair(pair, timeframe)
+            
+            if analysis and analysis.current_signal:
+                if analysis.current_signal.type != SignalType.NO_SIGNAL:
+                    signals.append(analysis.current_signal)
         
-        # Update spread data
-        state.spread_data = self.spread_builder.update_spread(
-            state.spread_data,
-            new_price_a,
-            new_price_b,
-            timestamp
-        )
-        
-        # Update metrics
-        state.spread_metrics = self.spread_builder.get_spread_metrics(state.spread_data)
-        
-        # Update correlation (periodically)
-        # For real-time, you might update less frequently
-        
-        # Generate new signal
-        if state.position is None:
-            # No position - check for entry
-            state.current_signal = self.signal_generator.generate_entry_signal(
-                pair=pair,
-                zscore=state.spread_metrics.zscore,
-                correlation=state.correlation_result.current_correlation,
-                hedge_ratio=state.spread_metrics.hedge_ratio,
-                timestamp=timestamp
-            )
-        else:
-            # In position - check for exit
-            state.current_signal = self.signal_generator.generate_exit_signal(
-                pair=pair,
-                position_type=state.position,
-                zscore=state.spread_metrics.zscore,
-                correlation=state.correlation_result.current_correlation,
-                hedge_ratio=state.spread_metrics.hedge_ratio,
-                timestamp=timestamp,
-                entry_zscore=state.entry_zscore
-            )
-        
-        return state
+        return signals
     
-    def enter_position(
+    def update_position(
         self,
         pair: Tuple[str, str],
-        signal: Signal
-    ) -> None:
+        direction: Optional[str]
+    ):
         """
-        Record position entry.
+        Update position tracking.
         
         Args:
-            pair: Instrument pair
+            pair: Pair tuple
+            direction: 'long_spread', 'short_spread', or None (closed)
+        """
+        if direction:
+            self._positions[pair] = direction
+        elif pair in self._positions:
+            del self._positions[pair]
+    
+    def get_position(self, pair: Tuple[str, str]) -> Optional[str]:
+        """Get current position direction for pair."""
+        return self._positions.get(pair)
+    
+    def get_last_analysis(self, pair: Tuple[str, str]) -> Optional[PairAnalysis]:
+        """Get cached analysis for pair."""
+        return self._last_analysis.get(pair)
+    
+    def calculate_entry_parameters(
+        self,
+        pair: Tuple[str, str],
+        signal: Signal,
+        capital: float
+    ) -> Dict:
+        """
+        Calculate entry parameters for a trade.
+        
+        Args:
+            pair: Pair tuple
             signal: Entry signal
-        """
-        if pair not in self._pair_states:
-            raise ValueError(f"Pair {pair} not initialized")
-        
-        state = self._pair_states[pair]
-        state.position = signal.signal_type
-        state.entry_zscore = signal.zscore
-        state.entry_time = signal.timestamp
-        state.entry_hedge_ratio = signal.hedge_ratio
-        
-        logger.info(
-            f"Entered position for {pair}: {signal.signal_type.value} "
-            f"at Z={signal.zscore:.2f}, hedge_ratio={signal.hedge_ratio:.4f}"
-        )
-    
-    def exit_position(
-        self,
-        pair: Tuple[str, str],
-        signal: Signal
-    ) -> Dict[str, Any]:
-        """
-        Record position exit and return trade info.
-        
-        Args:
-            pair: Instrument pair
-            signal: Exit signal
+            capital: Available capital
             
         Returns:
-            Trade information dictionary
+            Dictionary with trade parameters
         """
-        if pair not in self._pair_states:
-            raise ValueError(f"Pair {pair} not initialized")
+        risk_amount = capital * self.settings.risk.max_risk_per_trade
+        hedge_ratio = signal.hedge_ratio or 1.0
         
-        state = self._pair_states[pair]
-        
-        trade_info = {
-            'pair': pair,
-            'entry_type': state.position.value if state.position else None,
-            'entry_zscore': state.entry_zscore,
-            'entry_time': state.entry_time,
-            'entry_hedge_ratio': state.entry_hedge_ratio,
-            'exit_type': signal.signal_type.value,
-            'exit_zscore': signal.zscore,
-            'exit_time': signal.timestamp,
-            'exit_reason': signal.reason
-        }
-        
-        # Reset position state
-        state.position = None
-        state.entry_zscore = None
-        state.entry_time = None
-        state.entry_hedge_ratio = None
-        
-        logger.info(
-            f"Exited position for {pair}: {signal.signal_type.value} "
-            f"at Z={signal.zscore:.2f}, reason: {signal.reason}"
-        )
-        
-        return trade_info
-    
-    def get_state(self) -> StrategyState:
-        """
-        Get current strategy state.
-        
-        Returns:
-            StrategyState object
-        """
-        open_positions = sum(
-            1 for state in self._pair_states.values()
-            if state.position is not None
-        )
-        
-        return StrategyState(
-            timestamp=datetime.now(),
-            pairs=self._pair_states.copy(),
-            open_positions=open_positions
-        )
-    
-    def get_active_signals(self) -> List[Signal]:
-        """
-        Get all current active signals.
-        
-        Returns:
-            List of non-NO_SIGNAL signals
-        """
-        return [
-            state.current_signal
-            for state in self._pair_states.values()
-            if state.current_signal.signal_type != SignalType.NO_SIGNAL
-        ]
-    
-    def get_pair_summary(self, pair: Tuple[str, str]) -> Dict:
-        """
-        Get summary information for a pair.
-        
-        Args:
-            pair: Instrument pair
-            
-        Returns:
-            Summary dictionary
-        """
-        if pair not in self._pair_states:
-            raise ValueError(f"Pair {pair} not initialized")
-        
-        state = self._pair_states[pair]
+        # For pairs trading, split risk between legs
+        risk_per_leg = risk_amount / 2
         
         return {
             'pair': pair,
-            'is_tradeable': state.is_tradeable,
-            'tradeable_reason': state.tradeable_reason,
-            'correlation': state.correlation_result.current_correlation,
-            'correlation_stable': state.correlation_result.is_stable,
-            'is_cointegrated': state.cointegration_result.is_cointegrated if state.cointegration_result else None,
-            'half_life': state.spread_metrics.half_life,
-            'hurst_exponent': state.spread_metrics.hurst_exponent,
-            'current_zscore': state.spread_metrics.zscore,
-            'hedge_ratio': state.spread_metrics.hedge_ratio,
-            'current_signal': state.current_signal.signal_type.value,
-            'in_position': state.position is not None,
-            'position_type': state.position.value if state.position else None,
-            'entry_zscore': state.entry_zscore
+            'direction': signal.type.value,
+            'hedge_ratio': hedge_ratio,
+            'risk_amount': risk_amount,
+            'risk_per_leg': risk_per_leg,
+            'entry_zscore': signal.zscore,
+            'signal_strength': signal.strength
         }
     
-    def reset(self) -> None:
-        """Reset strategy state."""
-        self._pair_states.clear()
-        self._state = None
-        logger.info("Strategy state reset")
+    def get_status_summary(self) -> Dict:
+        """
+        Get strategy status summary.
+        
+        Returns:
+            Dictionary with strategy status
+        """
+        return {
+            'open_positions': len(self._positions),
+            'positions': dict(self._positions),
+            'last_analyses': len(self._last_analysis),
+            'settings': {
+                'entry_zscore': self.settings.spread.entry_zscore,
+                'exit_zscore': self.settings.spread.exit_zscore,
+                'min_correlation': self.settings.spread.min_correlation,
+                'max_half_life': self.settings.spread.max_half_life
+            }
+        }

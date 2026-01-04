@@ -1,176 +1,151 @@
 """
-Example: Run walk-forward optimization on a currency pair.
+Example: Run walk-forward optimization.
 
 This script demonstrates how to:
-1. Set up parameter ranges for optimization
-2. Run walk-forward analysis
-3. Analyze robustness of parameters
-4. Get recommended settings
+1. Load historical data
+2. Run walk-forward optimization
+3. Analyze parameter stability
+4. Get optimal parameters
 """
 
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from config.settings import Settings
-from config.broker_config import BrokerConfig
-from src.data.broker_client import OandaClient
+from config.settings import Settings, Timeframe
+from config.broker_config import MT5Config
+from src.data.broker_client import MT5Client, Timeframe as MT5Timeframe
 from src.data.data_manager import DataManager
-from src.optimization.optimizer import WalkForwardOptimizer, GridSearchOptimizer
+from src.optimization.optimizer import WalkForwardOptimizer
 
 
 def main():
-    """Run walk-forward optimization example."""
+    """Run optimization example."""
     print("="*60)
     print("PAIRS TRADING - WALK-FORWARD OPTIMIZATION")
     print("="*60)
     
     # Configuration
-    pair = ('EUR_USD', 'GBP_USD')
-    days_of_history = 730  # 2 years for proper walk-forward
+    pair = ("EURUSD", "GBPUSD")
+    days = 730  # 2 years
+    timeframe = Timeframe.H1
     
     print(f"\nPair: {pair[0]}/{pair[1]}")
-    print(f"History: {days_of_history} days")
+    print(f"Period: {days} days")
+    print(f"Timeframe: {timeframe.value}")
     
-    # Initialize settings
+    # Initialize
     settings = Settings()
     
-    # Walk-forward configuration
-    settings.optimization.in_sample_bars = 504   # ~3 weeks of H1 bars
-    settings.optimization.out_sample_bars = 168  # ~1 week
-    
-    print(f"\nWalk-Forward Configuration:")
-    print(f"  In-Sample:  {settings.optimization.in_sample_bars} bars")
-    print(f"  Out-Sample: {settings.optimization.out_sample_bars} bars")
-    
-    # Load broker config
     try:
-        broker_config = BrokerConfig.from_env()
-        client = OandaClient(broker_config)
-        data_manager = DataManager(client, settings.paths.cache_dir)
-        print("\n✓ Connected to OANDA")
-    except Exception as e:
-        print(f"\nERROR: Could not connect to OANDA: {e}")
-        return
-    
-    # Calculate date range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_of_history)
-    
-    # Fetch data
-    print("\nFetching data...")
-    
-    data_a = data_manager.fetch_data(
-        instrument=pair[0],
-        timeframe=settings.timeframe,
-        start_date=start_date,
-        end_date=end_date
-    )
-    
-    data_b = data_manager.fetch_data(
-        instrument=pair[1],
-        timeframe=settings.timeframe,
-        start_date=start_date,
-        end_date=end_date
-    )
-    
-    if data_a is None or data_b is None:
-        print("ERROR: Could not fetch data")
-        return
-    
-    print(f"✓ Loaded {len(data_a)} bars for {pair[0]}")
-    print(f"✓ Loaded {len(data_b)} bars for {pair[1]}")
-    
-    # Initialize optimizer
-    optimizer = WalkForwardOptimizer(settings, objective='sharpe')
-    
-    # Define parameter grid
-    param_grid = {
-        'entry_zscore': [1.5, 2.0, 2.5],
-        'exit_zscore': [0.0, 0.25, 0.5],
-        'stop_loss_zscore': [2.5, 3.0, 3.5],
-        'regression_window': [90, 120, 150],
-        'zscore_window': [30, 60],
-        'min_correlation': [0.65, 0.70, 0.75]
-    }
-    
-    optimizer.set_param_grid(param_grid)
-    
-    # Calculate number of combinations
-    n_combos = 1
-    for values in param_grid.values():
-        n_combos *= len(values)
-    
-    print(f"\nParameter Grid:")
-    for param, values in param_grid.items():
-        print(f"  {param}: {values}")
-    print(f"\nTotal combinations: {n_combos}")
-    
-    # Estimate walk-forward periods
-    total_bars = len(data_a)
-    is_bars = settings.optimization.in_sample_bars
-    oos_bars = settings.optimization.out_sample_bars
-    n_periods = (total_bars - is_bars) // oos_bars
-    
-    print(f"Expected walk-forward periods: {n_periods}")
-    print(f"Total optimizations: {n_periods * n_combos:,}")
-    
-    # Confirm
-    print("\n" + "-"*40)
-    confirm = input("Start optimization? (y/n): ")
-    if confirm.lower() != 'y':
-        print("Optimization cancelled.")
-        return
-    
-    # Run optimization
-    print("\nRunning walk-forward optimization...")
-    print("This may take a while...\n")
-    
-    result = optimizer.optimize(pair, data_a, data_b)
-    
-    # Print results
-    print(result.summary())
-    
-    # Save results
-    result_file = settings.paths.optimization_results / f"wfo_{pair[0]}_{pair[1]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    optimizer.save_results(result, str(result_file))
-    print(f"\n✓ Results saved to: {result_file}")
-    
-    # Recommendations
-    print("\n" + "="*60)
-    print("RECOMMENDED SETTINGS")
-    print("="*60)
-    
-    if result.most_robust_params:
-        params = result.most_robust_params
-        print(f"""
-Based on out-of-sample performance, the recommended parameters are:
-
-settings.spread.entry_zscore = {params.entry_zscore}
-settings.spread.exit_zscore = {params.exit_zscore}
-settings.spread.stop_loss_zscore = {params.stop_loss_zscore}
-settings.spread.regression_window = {params.regression_window}
-settings.spread.zscore_window = {params.zscore_window}
-settings.spread.min_correlation = {params.min_correlation}
-
-Expected Out-of-Sample Performance:
-  - Sharpe Ratio: {result.combined_sharpe:.2f}
-  - Total Return: {result.combined_return:.2%}
-  - Max Drawdown: {result.combined_max_drawdown:.2%}
-  - Efficiency Ratio: {result.avg_efficiency_ratio:.2%}
-""")
+        # Connect to MT5
+        config = MT5Config.from_env()
+        client = MT5Client(config)
         
-        if result.avg_efficiency_ratio < 0.5:
-            print("⚠ WARNING: Low efficiency ratio (<50%) suggests overfitting.")
-            print("  Consider using simpler parameters or more data.")
-        elif result.avg_efficiency_ratio > 0.8:
-            print("✓ Good efficiency ratio (>80%) suggests robust parameters.")
+        if not client.connect():
+            print("\nERROR: Could not connect to MT5")
+            return
+        
+        print("\n✓ Connected to MT5")
+        
+        # Load data
+        data_manager = DataManager(client, settings.paths.cache_dir)
+        
+        bars_per_day = 24
+        count = days * bars_per_day
+        
+        mt5_tf = MT5Timeframe.from_string(timeframe.value)
+        
+        print(f"\nLoading {count} bars...")
+        
+        price_a, price_b = data_manager.get_pair_data(
+            pair[0], pair[1], mt5_tf, count
+        )
+        
+        if len(price_a) < 1000:
+            print(f"ERROR: Insufficient data ({len(price_a)} bars)")
+            return
+        
+        print(f"✓ Loaded {len(price_a)} bars")
+        
+        # Run optimization
+        print("\n" + "-"*60)
+        print("RUNNING WALK-FORWARD OPTIMIZATION...")
+        print("-"*60)
+        print("\nThis may take several minutes...")
+        
+        optimizer = WalkForwardOptimizer(settings)
+        result = optimizer.optimize(pair, price_a, price_b)
+        
+        # Display results
+        print("\n" + "="*60)
+        print("OPTIMIZATION RESULTS")
+        print("="*60)
+        
+        print(f"\nPeriods analyzed: {len(result.periods)}")
+        print(f"Total trades: {result.total_trades}")
+        
+        print(f"\nPerformance:")
+        print(f"  In-Sample Sharpe:  {result.is_sharpe:>8.2f}")
+        print(f"  Out-of-Sample Sharpe: {result.oos_sharpe:>8.2f}")
+        print(f"  Efficiency Ratio:  {result.efficiency_ratio:>8.2f}")
+        
+        if result.efficiency_ratio >= 0.5:
+            print("  → Good parameter stability (efficiency ≥ 0.5)")
+        else:
+            print("  → Warning: Low efficiency ratio (potential overfitting)")
+        
+        if result.best_params:
+            print(f"\nBest Parameters:")
+            print(f"  Entry Z-score:      {result.best_params.entry_zscore}")
+            print(f"  Exit Z-score:       {result.best_params.exit_zscore}")
+            print(f"  Stop-loss Z-score:  {result.best_params.stop_loss_zscore}")
+            print(f"  Regression window:  {result.best_params.regression_window}")
+            print(f"  Z-score window:     {result.best_params.zscore_window}")
+            print(f"  Min correlation:    {result.best_params.min_correlation}")
+        
+        # Period details
+        print("\nPeriod-by-Period Results:")
+        print("-" * 40)
+        
+        for i, period in enumerate(result.periods, 1):
+            print(f"\nPeriod {i}:")
+            print(f"  IS Sharpe: {period.is_sharpe:.2f} | OOS Sharpe: {period.oos_sharpe:.2f}")
+            if period.best_params:
+                print(f"  Best entry Z: {period.best_params.entry_zscore}")
+        
+        # Save results
+        results_path = Path(settings.paths.optimization_dir) / f"opt_{pair[0]}_{pair[1]}_{datetime.now():%Y%m%d}.json"
+        optimizer.save_results(result, str(results_path))
+        print(f"\n✓ Results saved to: {results_path}")
+        
+        # Recommendations
+        print("\n" + "-"*60)
+        print("RECOMMENDATIONS")
+        print("-"*60)
+        
+        if result.efficiency_ratio >= 0.5 and result.oos_sharpe > 0.5:
+            print("\n✓ Strategy shows robust out-of-sample performance")
+            print("  Recommended for paper trading validation")
+        elif result.efficiency_ratio < 0.5:
+            print("\n⚠ Warning: Low efficiency ratio suggests overfitting")
+            print("  Consider using more conservative parameters")
+        elif result.oos_sharpe < 0.5:
+            print("\n⚠ Warning: Poor out-of-sample performance")
+            print("  Strategy may not be viable for this pair")
+        
+    except Exception as e:
+        print(f"\nERROR: {e}")
+        raise
+    finally:
+        if 'client' in locals():
+            client.disconnect()
     
-    print("="*60)
+    print("\n" + "="*60)
     print("OPTIMIZATION COMPLETE")
     print("="*60)
 

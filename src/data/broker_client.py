@@ -1,651 +1,770 @@
 """
-OANDA Broker Client
+MetaTrader 5 Client for IC Markets Global.
 
-Handles all communication with the OANDA REST API:
-- Historical data fetching
-- Real-time price streaming
-- Order management
+Handles all MT5 API interactions:
+- Connection management
+- Historical data retrieval
+- Order execution
 - Account information
 """
 
+import MetaTrader5 as mt5
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Union
-import time
+from typing import Optional, List, Dict, Tuple, Any
+from dataclasses import dataclass
+from enum import Enum
 import logging
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import time
 
-import sys
-sys.path.append(str(__file__).rsplit('\\', 3)[0])
-
-from config.broker_config import BrokerConfig, OandaEnvironment, OANDA_INSTRUMENTS
-from config.settings import Timeframe
+from config.broker_config import MT5Config, SymbolInfo
 
 
 logger = logging.getLogger(__name__)
 
 
-class OandaClient:
-    """
-    Client for interacting with OANDA's REST API.
+class OrderType(Enum):
+    """MT5 Order types."""
+    BUY = mt5.ORDER_TYPE_BUY
+    SELL = mt5.ORDER_TYPE_SELL
+    BUY_LIMIT = mt5.ORDER_TYPE_BUY_LIMIT
+    SELL_LIMIT = mt5.ORDER_TYPE_SELL_LIMIT
+    BUY_STOP = mt5.ORDER_TYPE_BUY_STOP
+    SELL_STOP = mt5.ORDER_TYPE_SELL_STOP
+
+
+class Timeframe(Enum):
+    """MT5 Timeframes."""
+    M1 = mt5.TIMEFRAME_M1
+    M5 = mt5.TIMEFRAME_M5
+    M15 = mt5.TIMEFRAME_M15
+    M30 = mt5.TIMEFRAME_M30
+    H1 = mt5.TIMEFRAME_H1
+    H4 = mt5.TIMEFRAME_H4
+    D1 = mt5.TIMEFRAME_D1
+    W1 = mt5.TIMEFRAME_W1
+    MN1 = mt5.TIMEFRAME_MN1
     
-    Provides methods for:
-    - Fetching historical candlestick data
-    - Placing and managing orders
-    - Getting account information
-    - Real-time price streaming
+    @classmethod
+    def from_string(cls, tf_str: str) -> 'Timeframe':
+        """Convert string to Timeframe."""
+        mapping = {
+            'M1': cls.M1, 'M5': cls.M5, 'M15': cls.M15, 'M30': cls.M30,
+            'H1': cls.H1, 'H4': cls.H4, 'D1': cls.D1, 'W1': cls.W1, 'MN1': cls.MN1
+        }
+        return mapping.get(tf_str.upper(), cls.H1)
+
+
+@dataclass
+class OrderResult:
+    """Result of an order execution."""
+    success: bool
+    ticket: int
+    symbol: str
+    volume: float
+    price: float
+    order_type: str
+    comment: str
+    error_code: int = 0
+    error_message: str = ""
+
+
+@dataclass
+class Position:
+    """Open position information."""
+    ticket: int
+    symbol: str
+    volume: float
+    price_open: float
+    price_current: float
+    profit: float
+    swap: float
+    type: str  # 'buy' or 'sell'
+    magic: int
+    comment: str
+    time: datetime
+
+
+class MT5Client:
+    """
+    MetaTrader 5 Client for IC Markets Global.
+    
+    Provides unified interface for:
+    - Historical data retrieval
+    - Real-time quotes
+    - Order execution
+    - Position management
     """
     
-    def __init__(self, config: Optional[BrokerConfig] = None):
+    def __init__(self, config: MT5Config):
+        """Initialize MT5 client."""
+        self.config = config
+        self._connected = False
+        self._symbol_cache: Dict[str, SymbolInfo] = {}
+    
+    def connect(self) -> bool:
         """
-        Initialize the OANDA client.
+        Initialize and connect to MT5 terminal.
         
-        Args:
-            config: BrokerConfig instance. If None, loads from environment.
+        Returns:
+            True if connected successfully
         """
-        self.config = config or BrokerConfig.from_env()
-        self._session: Optional[requests.Session] = None
-        self._last_request_time: float = 0.0
+        if self._connected:
+            return True
         
-    @property
-    def session(self) -> requests.Session:
-        """Get or create HTTP session with retry logic."""
-        if self._session is None:
-            self._session = requests.Session()
-            
-            # Configure retries
-            retry_strategy = Retry(
-                total=self.config.max_retries,
-                backoff_factor=self.config.retry_delay,
-                status_forcelist=[429, 500, 502, 503, 504],
-                allowed_methods=["HEAD", "GET", "POST", "PUT", "DELETE"]
+        # Initialize MT5
+        init_params = {}
+        if self.config.terminal_path:
+            init_params['path'] = self.config.terminal_path
+        
+        if not mt5.initialize(**init_params):
+            error = mt5.last_error()
+            logger.error(f"MT5 initialization failed: {error}")
+            return False
+        
+        # Login to account
+        if self.config.login > 0:
+            authorized = mt5.login(
+                login=self.config.login,
+                password=self.config.password,
+                server=self.config.server,
+                timeout=self.config.timeout
             )
             
-            adapter = HTTPAdapter(max_retries=retry_strategy)
-            self._session.mount("https://", adapter)
-            self._session.mount("http://", adapter)
-            
-            # Set default headers
-            self._session.headers.update({
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-                "Accept-Datetime-Format": "RFC3339"
-            })
+            if not authorized:
+                error = mt5.last_error()
+                logger.error(f"MT5 login failed: {error}")
+                mt5.shutdown()
+                return False
         
-        return self._session
+        self._connected = True
+        logger.info(f"Connected to MT5: {self.config.server}")
+        return True
     
-    def _rate_limit(self) -> None:
-        """Implement rate limiting to avoid API throttling."""
-        min_interval = 1.0 / self.config.requests_per_second
-        elapsed = time.time() - self._last_request_time
-        
-        if elapsed < min_interval:
-            time.sleep(min_interval - elapsed)
-        
-        self._last_request_time = time.time()
+    def disconnect(self):
+        """Disconnect from MT5 terminal."""
+        if self._connected:
+            mt5.shutdown()
+            self._connected = False
+            logger.info("Disconnected from MT5")
     
-    def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        params: Optional[Dict] = None,
-        data: Optional[Dict] = None,
-        stream: bool = False
-    ) -> Dict:
-        """
-        Make an API request with error handling.
-        
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            endpoint: API endpoint
-            params: Query parameters
-            data: Request body data
-            stream: Whether to stream response
-            
-        Returns:
-            Response data as dictionary
-        """
-        self._rate_limit()
-        
-        url = f"{self.config.api_url}{endpoint}"
-        
-        try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                params=params,
-                json=data,
-                timeout=self.config.request_timeout,
-                stream=stream
-            )
-            
-            response.raise_for_status()
-            
-            if stream:
-                return response
-            
-            return response.json()
-            
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
-            raise
-        except requests.exceptions.ConnectionError as e:
-            logger.error(f"Connection Error: {e}")
-            raise
-        except requests.exceptions.Timeout as e:
-            logger.error(f"Timeout Error: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Request Error: {e}")
-            raise
+    def ensure_connected(self):
+        """Ensure connection is active, reconnect if needed."""
+        if not self._connected:
+            if not self.connect():
+                raise ConnectionError("Failed to connect to MT5")
     
-    def get_account_info(self) -> Dict:
-        """
-        Get account information.
-        
-        Returns:
-            Account details including balance, margin, positions
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}"
-        return self._make_request("GET", endpoint)
+    # ==================== Account Information ====================
     
-    def get_account_summary(self) -> Dict:
-        """
-        Get account summary.
+    def get_account_info(self) -> Dict[str, Any]:
+        """Get account information."""
+        self.ensure_connected()
         
-        Returns:
-            Account summary with balance, NAV, unrealized P&L
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/summary"
-        return self._make_request("GET", endpoint)
+        info = mt5.account_info()
+        if info is None:
+            return {}
+        
+        return {
+            'login': info.login,
+            'server': info.server,
+            'balance': info.balance,
+            'equity': info.equity,
+            'margin': info.margin,
+            'free_margin': info.margin_free,
+            'margin_level': info.margin_level,
+            'profit': info.profit,
+            'currency': info.currency,
+            'leverage': info.leverage,
+            'name': info.name,
+            'company': info.company
+        }
     
-    def get_instruments(self) -> List[Dict]:
-        """
-        Get available instruments.
+    def get_balance(self) -> float:
+        """Get account balance."""
+        info = self.get_account_info()
+        return info.get('balance', 0.0)
+    
+    def get_equity(self) -> float:
+        """Get account equity."""
+        info = self.get_account_info()
+        return info.get('equity', 0.0)
+    
+    # ==================== Symbol Information ====================
+    
+    def get_symbol_info(self, symbol: str) -> Optional[SymbolInfo]:
+        """Get symbol information."""
+        self.ensure_connected()
         
-        Returns:
-            List of tradeable instruments with specifications
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/instruments"
-        response = self._make_request("GET", endpoint)
-        return response.get('instruments', [])
+        full_symbol = self.config.get_symbol(symbol)
+        
+        # Check cache
+        if full_symbol in self._symbol_cache:
+            return self._symbol_cache[full_symbol]
+        
+        info = mt5.symbol_info(full_symbol)
+        if info is None:
+            logger.warning(f"Symbol not found: {full_symbol}")
+            return None
+        
+        symbol_info = SymbolInfo(
+            name=info.name,
+            digits=info.digits,
+            point=info.point,
+            trade_tick_size=info.trade_tick_size,
+            trade_tick_value=info.trade_tick_value,
+            volume_min=info.volume_min,
+            volume_max=info.volume_max,
+            volume_step=info.volume_step,
+            trade_contract_size=info.trade_contract_size,
+            spread=info.spread,
+            swap_long=info.swap_long,
+            swap_short=info.swap_short,
+            margin_initial=info.margin_initial,
+            currency_base=info.currency_base,
+            currency_profit=info.currency_profit,
+            description=info.description
+        )
+        
+        # Cache it
+        self._symbol_cache[full_symbol] = symbol_info
+        return symbol_info
+    
+    def select_symbol(self, symbol: str) -> bool:
+        """Enable symbol in Market Watch."""
+        self.ensure_connected()
+        full_symbol = self.config.get_symbol(symbol)
+        return mt5.symbol_select(full_symbol, True)
+    
+    def get_tick(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get current tick data for symbol."""
+        self.ensure_connected()
+        full_symbol = self.config.get_symbol(symbol)
+        
+        tick = mt5.symbol_info_tick(full_symbol)
+        if tick is None:
+            return None
+        
+        return {
+            'bid': tick.bid,
+            'ask': tick.ask,
+            'last': tick.last,
+            'volume': tick.volume,
+            'time': datetime.fromtimestamp(tick.time)
+        }
+    
+    # ==================== Historical Data ====================
     
     def get_candles(
         self,
-        instrument: str,
-        granularity: str = "H1",
-        count: Optional[int] = None,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
-        price: str = "M"  # M=mid, B=bid, A=ask
-    ) -> pd.DataFrame:
-        """
-        Fetch historical candlestick data.
-        
-        Args:
-            instrument: Instrument name (e.g., 'EUR_USD')
-            granularity: Timeframe (M1, M5, M15, M30, H1, H4, D)
-            count: Number of candles (max 5000)
-            from_time: Start datetime
-            to_time: End datetime
-            price: Price type (M=mid, B=bid, A=ask)
-            
-        Returns:
-            DataFrame with OHLCV data
-        """
-        self.config.validate()
-        endpoint = f"/v3/instruments/{instrument}/candles"
-        
-        params = {
-            "granularity": granularity,
-            "price": price
-        }
-        
-        if count:
-            params["count"] = min(count, self.config.max_candles_per_request)
-        
-        if from_time:
-            params["from"] = from_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        if to_time:
-            params["to"] = to_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        response = self._make_request("GET", endpoint, params=params)
-        
-        candles = response.get('candles', [])
-        
-        if not candles:
-            return pd.DataFrame()
-        
-        # Parse candles into DataFrame
-        data = []
-        for candle in candles:
-            if candle.get('complete', True):  # Only complete candles
-                mid = candle.get('mid', {})
-                row = {
-                    'time': pd.to_datetime(candle['time']),
-                    'open': float(mid.get('o', 0)),
-                    'high': float(mid.get('h', 0)),
-                    'low': float(mid.get('l', 0)),
-                    'close': float(mid.get('c', 0)),
-                    'volume': int(candle.get('volume', 0))
-                }
-                data.append(row)
-        
-        df = pd.DataFrame(data)
-        
-        if not df.empty:
-            df.set_index('time', inplace=True)
-            df.sort_index(inplace=True)
-        
-        return df
-    
-    def get_historical_data(
-        self,
-        instrument: str,
+        symbol: str,
         timeframe: Timeframe,
-        start_date: datetime,
-        end_date: Optional[datetime] = None
+        count: int = 500,
+        start_time: Optional[datetime] = None
     ) -> pd.DataFrame:
         """
-        Fetch historical data with automatic pagination.
+        Get historical OHLC data.
         
         Args:
-            instrument: Instrument name
+            symbol: Trading symbol (without suffix)
             timeframe: Timeframe enum
-            start_date: Start datetime
-            end_date: End datetime (default: now)
+            count: Number of candles to retrieve
+            start_time: Start time for data (None = from current time backwards)
             
         Returns:
-            DataFrame with complete historical data
+            DataFrame with OHLC data
         """
-        if end_date is None:
-            end_date = datetime.utcnow()
+        self.ensure_connected()
+        full_symbol = self.config.get_symbol(symbol)
         
-        granularity = timeframe.oanda_granularity
-        all_data = []
-        current_start = start_date
+        # Ensure symbol is selected
+        self.select_symbol(symbol)
         
-        logger.info(f"Fetching {instrument} data from {start_date} to {end_date}")
-        
-        while current_start < end_date:
-            df = self.get_candles(
-                instrument=instrument,
-                granularity=granularity,
-                from_time=current_start,
-                to_time=end_date,
-                count=self.config.max_candles_per_request
+        if start_time:
+            rates = mt5.copy_rates_from(
+                full_symbol,
+                timeframe.value,
+                start_time,
+                count
             )
-            
-            if df.empty:
-                break
-            
-            all_data.append(df)
-            
-            # Move start to last candle time
-            last_time = df.index[-1].to_pydatetime()
-            
-            if last_time <= current_start:
-                break
-            
-            current_start = last_time + timedelta(minutes=timeframe.minutes)
-            
-            logger.debug(f"Fetched {len(df)} candles, last: {last_time}")
+        else:
+            rates = mt5.copy_rates_from_pos(
+                full_symbol,
+                timeframe.value,
+                0,  # Start from current bar
+                count
+            )
         
-        if not all_data:
+        if rates is None or len(rates) == 0:
+            logger.warning(f"No data received for {full_symbol}")
             return pd.DataFrame()
         
-        # Combine all data
-        result = pd.concat(all_data)
-        result = result[~result.index.duplicated(keep='first')]
-        result.sort_index(inplace=True)
+        # Convert to DataFrame
+        df = pd.DataFrame(rates)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df.set_index('time', inplace=True)
+        df.rename(columns={
+            'open': 'open',
+            'high': 'high',
+            'low': 'low',
+            'close': 'close',
+            'tick_volume': 'volume',
+            'spread': 'spread',
+            'real_volume': 'real_volume'
+        }, inplace=True)
         
-        logger.info(f"Total candles fetched: {len(result)}")
-        
-        return result
+        return df[['open', 'high', 'low', 'close', 'volume', 'spread']]
     
-    def get_current_price(self, instrument: str) -> Dict[str, float]:
-        """
-        Get current bid/ask prices.
-        
-        Args:
-            instrument: Instrument name
-            
-        Returns:
-            Dictionary with bid, ask, and mid prices
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/pricing"
-        params = {"instruments": instrument}
-        
-        response = self._make_request("GET", endpoint, params=params)
-        
-        prices = response.get('prices', [])
-        if not prices:
-            raise ValueError(f"No price data for {instrument}")
-        
-        price_data = prices[0]
-        
-        bid = float(price_data['bids'][0]['price'])
-        ask = float(price_data['asks'][0]['price'])
-        
-        return {
-            'bid': bid,
-            'ask': ask,
-            'mid': (bid + ask) / 2,
-            'spread': ask - bid,
-            'time': pd.to_datetime(price_data['time'])
-        }
-    
-    def get_current_prices(self, instruments: List[str]) -> Dict[str, Dict[str, float]]:
-        """
-        Get current prices for multiple instruments.
-        
-        Args:
-            instruments: List of instrument names
-            
-        Returns:
-            Dictionary mapping instrument to price data
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/pricing"
-        params = {"instruments": ",".join(instruments)}
-        
-        response = self._make_request("GET", endpoint, params=params)
-        
-        result = {}
-        for price_data in response.get('prices', []):
-            instrument = price_data['instrument']
-            bid = float(price_data['bids'][0]['price'])
-            ask = float(price_data['asks'][0]['price'])
-            
-            result[instrument] = {
-                'bid': bid,
-                'ask': ask,
-                'mid': (bid + ask) / 2,
-                'spread': ask - bid,
-                'time': pd.to_datetime(price_data['time'])
-            }
-        
-        return result
-    
-    def place_market_order(
+    def get_candles_range(
         self,
-        instrument: str,
-        units: int,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None
-    ) -> Dict:
+        symbol: str,
+        timeframe: Timeframe,
+        start_time: datetime,
+        end_time: datetime
+    ) -> pd.DataFrame:
         """
-        Place a market order.
+        Get historical data for a specific date range.
         
         Args:
-            instrument: Instrument name
-            units: Position size (positive for long, negative for short)
-            stop_loss: Stop loss price
-            take_profit: Take profit price
+            symbol: Trading symbol
+            timeframe: Timeframe enum
+            start_time: Start datetime
+            end_time: End datetime
             
         Returns:
-            Order response with execution details
+            DataFrame with OHLC data
         """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/orders"
+        self.ensure_connected()
+        full_symbol = self.config.get_symbol(symbol)
         
-        order_data = {
-            "order": {
-                "type": "MARKET",
-                "instrument": instrument,
-                "units": str(units),
-                "timeInForce": "FOK",  # Fill or Kill
-                "positionFill": "DEFAULT"
-            }
-        }
+        self.select_symbol(symbol)
         
-        if stop_loss:
-            order_data["order"]["stopLossOnFill"] = {
-                "price": f"{stop_loss:.5f}"
-            }
+        rates = mt5.copy_rates_range(
+            full_symbol,
+            timeframe.value,
+            start_time,
+            end_time
+        )
         
-        if take_profit:
-            order_data["order"]["takeProfitOnFill"] = {
-                "price": f"{take_profit:.5f}"
-            }
+        if rates is None or len(rates) == 0:
+            logger.warning(f"No data for {full_symbol} in range")
+            return pd.DataFrame()
         
-        response = self._make_request("POST", endpoint, data=order_data)
+        df = pd.DataFrame(rates)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df.set_index('time', inplace=True)
         
-        logger.info(f"Market order placed: {instrument} {units} units")
-        
-        return response
+        return df[['open', 'high', 'low', 'close', 'tick_volume', 'spread']]
     
-    def place_limit_order(
+    def get_close_prices(
         self,
-        instrument: str,
-        units: int,
-        price: float,
-        stop_loss: Optional[float] = None,
-        take_profit: Optional[float] = None,
-        gtd_time: Optional[datetime] = None
-    ) -> Dict:
+        symbol: str,
+        timeframe: Timeframe,
+        count: int = 500
+    ) -> pd.Series:
+        """Get close prices as Series."""
+        df = self.get_candles(symbol, timeframe, count)
+        if df.empty:
+            return pd.Series(dtype=float)
+        return df['close']
+    
+    # ==================== Order Execution ====================
+    
+    def market_order(
+        self,
+        symbol: str,
+        order_type: OrderType,
+        volume: float,
+        sl: float = 0.0,
+        tp: float = 0.0,
+        comment: str = ""
+    ) -> OrderResult:
         """
-        Place a limit order.
+        Execute a market order.
         
         Args:
-            instrument: Instrument name
-            units: Position size
-            price: Limit price
-            stop_loss: Stop loss price
-            take_profit: Take profit price
-            gtd_time: Good till date
+            symbol: Trading symbol
+            order_type: BUY or SELL
+            volume: Lot size
+            sl: Stop loss price (0 = no SL)
+            tp: Take profit price (0 = no TP)
+            comment: Order comment
             
         Returns:
-            Order response
+            OrderResult with execution details
         """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/orders"
+        self.ensure_connected()
+        full_symbol = self.config.get_symbol(symbol)
         
-        order_data = {
-            "order": {
-                "type": "LIMIT",
-                "instrument": instrument,
-                "units": str(units),
-                "price": f"{price:.5f}",
-                "timeInForce": "GTC" if not gtd_time else "GTD",
-                "positionFill": "DEFAULT"
-            }
+        # Get current price
+        tick = mt5.symbol_info_tick(full_symbol)
+        if tick is None:
+            return OrderResult(
+                success=False,
+                ticket=0,
+                symbol=symbol,
+                volume=volume,
+                price=0,
+                order_type=order_type.name,
+                comment=comment,
+                error_code=-1,
+                error_message="Failed to get tick data"
+            )
+        
+        price = tick.ask if order_type == OrderType.BUY else tick.bid
+        
+        # Build request
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": full_symbol,
+            "volume": volume,
+            "type": order_type.value,
+            "price": price,
+            "deviation": self.config.deviation,
+            "magic": self.config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
         }
         
-        if gtd_time:
-            order_data["order"]["gtdTime"] = gtd_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if sl > 0:
+            request["sl"] = sl
+        if tp > 0:
+            request["tp"] = tp
         
-        if stop_loss:
-            order_data["order"]["stopLossOnFill"] = {
-                "price": f"{stop_loss:.5f}"
-            }
+        # Execute order
+        result = mt5.order_send(request)
         
-        if take_profit:
-            order_data["order"]["takeProfitOnFill"] = {
-                "price": f"{take_profit:.5f}"
-            }
+        if result is None:
+            error = mt5.last_error()
+            return OrderResult(
+                success=False,
+                ticket=0,
+                symbol=symbol,
+                volume=volume,
+                price=price,
+                order_type=order_type.name,
+                comment=comment,
+                error_code=error[0],
+                error_message=error[1]
+            )
         
-        return self._make_request("POST", endpoint, data=order_data)
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            return OrderResult(
+                success=False,
+                ticket=result.order,
+                symbol=symbol,
+                volume=volume,
+                price=result.price,
+                order_type=order_type.name,
+                comment=comment,
+                error_code=result.retcode,
+                error_message=result.comment
+            )
+        
+        logger.info(f"Order executed: {order_type.name} {volume} {symbol} @ {result.price}")
+        
+        return OrderResult(
+            success=True,
+            ticket=result.order,
+            symbol=symbol,
+            volume=result.volume,
+            price=result.price,
+            order_type=order_type.name,
+            comment=comment
+        )
     
-    def close_position(self, instrument: str, units: Optional[int] = None) -> Dict:
+    def close_position(
+        self,
+        ticket: int,
+        volume: Optional[float] = None,
+        comment: str = "Close position"
+    ) -> OrderResult:
         """
-        Close a position (fully or partially).
+        Close an open position.
         
         Args:
-            instrument: Instrument name
-            units: Units to close (None = close all)
+            ticket: Position ticket
+            volume: Volume to close (None = full position)
+            comment: Order comment
             
         Returns:
-            Close response
+            OrderResult with execution details
         """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/positions/{instrument}/close"
+        self.ensure_connected()
         
-        data = {}
-        if units:
-            if units > 0:
-                data["longUnits"] = str(units)
-            else:
-                data["shortUnits"] = str(abs(units))
+        # Get position info
+        position = mt5.positions_get(ticket=ticket)
+        if not position:
+            return OrderResult(
+                success=False,
+                ticket=ticket,
+                symbol="",
+                volume=0,
+                price=0,
+                order_type="CLOSE",
+                comment=comment,
+                error_code=-1,
+                error_message="Position not found"
+            )
+        
+        pos = position[0]
+        symbol = pos.symbol
+        pos_volume = volume if volume else pos.volume
+        
+        # Determine close direction
+        close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        
+        # Get current price
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return OrderResult(
+                success=False,
+                ticket=ticket,
+                symbol=symbol,
+                volume=pos_volume,
+                price=0,
+                order_type="CLOSE",
+                comment=comment,
+                error_code=-1,
+                error_message="Failed to get tick data"
+            )
+        
+        price = tick.bid if pos.type == mt5.ORDER_TYPE_BUY else tick.ask
+        
+        # Build close request
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": pos_volume,
+            "type": close_type,
+            "position": ticket,
+            "price": price,
+            "deviation": self.config.deviation,
+            "magic": self.config.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        
+        result = mt5.order_send(request)
+        
+        if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+            error = mt5.last_error() if result is None else (result.retcode, result.comment)
+            return OrderResult(
+                success=False,
+                ticket=ticket,
+                symbol=symbol,
+                volume=pos_volume,
+                price=price,
+                order_type="CLOSE",
+                comment=comment,
+                error_code=error[0],
+                error_message=str(error[1])
+            )
+        
+        logger.info(f"Position closed: {ticket} @ {result.price}")
+        
+        return OrderResult(
+            success=True,
+            ticket=result.order,
+            symbol=symbol,
+            volume=result.volume,
+            price=result.price,
+            order_type="CLOSE",
+            comment=comment
+        )
+    
+    def close_all_positions(self, symbol: Optional[str] = None) -> List[OrderResult]:
+        """Close all positions, optionally filtered by symbol."""
+        self.ensure_connected()
+        
+        if symbol:
+            full_symbol = self.config.get_symbol(symbol)
+            positions = mt5.positions_get(symbol=full_symbol)
         else:
-            data["longUnits"] = "ALL"
-            data["shortUnits"] = "ALL"
+            positions = mt5.positions_get()
         
-        response = self._make_request("PUT", endpoint, data=data)
+        results = []
+        if positions:
+            for pos in positions:
+                if pos.magic == self.config.magic_number:
+                    result = self.close_position(pos.ticket)
+                    results.append(result)
         
-        logger.info(f"Position closed: {instrument}")
-        
-        return response
+        return results
     
-    def get_open_positions(self) -> List[Dict]:
-        """
-        Get all open positions.
-        
-        Returns:
-            List of open positions
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/openPositions"
-        
-        response = self._make_request("GET", endpoint)
-        return response.get('positions', [])
+    # ==================== Position Management ====================
     
-    def get_position(self, instrument: str) -> Optional[Dict]:
-        """
-        Get position for a specific instrument.
+    def get_positions(self, symbol: Optional[str] = None) -> List[Position]:
+        """Get open positions."""
+        self.ensure_connected()
         
-        Args:
-            instrument: Instrument name
+        if symbol:
+            full_symbol = self.config.get_symbol(symbol)
+            positions = mt5.positions_get(symbol=full_symbol)
+        else:
+            positions = mt5.positions_get()
+        
+        if not positions:
+            return []
+        
+        result = []
+        for pos in positions:
+            # Filter by magic number
+            if pos.magic != self.config.magic_number:
+                continue
             
-        Returns:
-            Position details or None
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/positions/{instrument}"
+            result.append(Position(
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                volume=pos.volume,
+                price_open=pos.price_open,
+                price_current=pos.price_current,
+                profit=pos.profit,
+                swap=pos.swap,
+                type='buy' if pos.type == mt5.ORDER_TYPE_BUY else 'sell',
+                magic=pos.magic,
+                comment=pos.comment,
+                time=datetime.fromtimestamp(pos.time)
+            ))
         
-        try:
-            response = self._make_request("GET", endpoint)
-            return response.get('position')
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+        return result
     
-    def get_pending_orders(self) -> List[Dict]:
-        """
-        Get all pending orders.
-        
-        Returns:
-            List of pending orders
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/pendingOrders"
-        
-        response = self._make_request("GET", endpoint)
-        return response.get('orders', [])
+    def get_position_by_ticket(self, ticket: int) -> Optional[Position]:
+        """Get specific position by ticket."""
+        positions = self.get_positions()
+        for pos in positions:
+            if pos.ticket == ticket:
+                return pos
+        return None
     
-    def cancel_order(self, order_id: str) -> Dict:
-        """
-        Cancel a pending order.
-        
-        Args:
-            order_id: Order ID to cancel
-            
-        Returns:
-            Cancel response
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/orders/{order_id}/cancel"
-        
-        return self._make_request("PUT", endpoint)
+    def get_total_profit(self) -> float:
+        """Get total profit/loss of all open positions."""
+        positions = self.get_positions()
+        return sum(pos.profit for pos in positions)
     
-    def get_trades(self, instrument: Optional[str] = None) -> List[Dict]:
-        """
-        Get open trades.
-        
-        Args:
-            instrument: Filter by instrument (optional)
-            
-        Returns:
-            List of open trades
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/openTrades"
-        
-        params = {}
-        if instrument:
-            params["instrument"] = instrument
-        
-        response = self._make_request("GET", endpoint, params=params)
-        return response.get('trades', [])
+    # ==================== Order History ====================
     
-    def close_trade(self, trade_id: str, units: Optional[int] = None) -> Dict:
-        """
-        Close a specific trade.
-        
-        Args:
-            trade_id: Trade ID to close
-            units: Units to close (None = all)
-            
-        Returns:
-            Close response
-        """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/trades/{trade_id}/close"
-        
-        data = {}
-        if units:
-            data["units"] = str(units)
-        
-        return self._make_request("PUT", endpoint, data=data if data else None)
-    
-    def get_transaction_history(
+    def get_history_orders(
         self,
-        from_time: Optional[datetime] = None,
-        to_time: Optional[datetime] = None,
-        page_size: int = 100
-    ) -> List[Dict]:
+        start_time: datetime,
+        end_time: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """Get historical orders."""
+        self.ensure_connected()
+        
+        if end_time is None:
+            end_time = datetime.now()
+        
+        orders = mt5.history_orders_get(start_time, end_time)
+        
+        if orders is None:
+            return []
+        
+        return [
+            {
+                'ticket': order.ticket,
+                'symbol': order.symbol,
+                'type': 'buy' if order.type == mt5.ORDER_TYPE_BUY else 'sell',
+                'volume': order.volume_current,
+                'price': order.price_current,
+                'state': order.state,
+                'time': datetime.fromtimestamp(order.time_setup),
+                'comment': order.comment
+            }
+            for order in orders
+            if order.magic == self.config.magic_number
+        ]
+    
+    def get_history_deals(
+        self,
+        start_time: datetime,
+        end_time: Optional[datetime] = None
+    ) -> pd.DataFrame:
+        """Get historical deals as DataFrame."""
+        self.ensure_connected()
+        
+        if end_time is None:
+            end_time = datetime.now()
+        
+        deals = mt5.history_deals_get(start_time, end_time)
+        
+        if deals is None or len(deals) == 0:
+            return pd.DataFrame()
+        
+        data = []
+        for deal in deals:
+            if deal.magic == self.config.magic_number:
+                data.append({
+                    'ticket': deal.ticket,
+                    'order': deal.order,
+                    'symbol': deal.symbol,
+                    'type': 'buy' if deal.type == mt5.DEAL_TYPE_BUY else 'sell',
+                    'volume': deal.volume,
+                    'price': deal.price,
+                    'profit': deal.profit,
+                    'swap': deal.swap,
+                    'commission': deal.commission,
+                    'time': datetime.fromtimestamp(deal.time),
+                    'comment': deal.comment
+                })
+        
+        return pd.DataFrame(data)
+    
+    # ==================== Utility Methods ====================
+    
+    def calculate_lot_size(
+        self,
+        symbol: str,
+        risk_amount: float,
+        stop_loss_pips: float
+    ) -> float:
         """
-        Get transaction history.
+        Calculate lot size based on risk.
         
         Args:
-            from_time: Start datetime
-            to_time: End datetime
-            page_size: Number of transactions per page
+            symbol: Trading symbol
+            risk_amount: Amount to risk in account currency
+            stop_loss_pips: Stop loss distance in pips
             
         Returns:
-            List of transactions
+            Calculated lot size (rounded to volume step)
         """
-        self.config.validate()
-        endpoint = f"/v3/accounts/{self.config.account_id}/transactions"
+        info = self.get_symbol_info(symbol)
+        if info is None:
+            return 0.0
         
-        params = {"pageSize": page_size}
+        # Pip value calculation
+        pip_value = info.trade_tick_value * (info.trade_tick_size / info.point)
         
-        if from_time:
-            params["from"] = from_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if stop_loss_pips <= 0:
+            return info.volume_min
         
-        if to_time:
-            params["to"] = to_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Calculate lot size
+        lot_size = risk_amount / (stop_loss_pips * pip_value)
         
-        response = self._make_request("GET", endpoint, params=params)
-        return response.get('transactions', [])
+        # Round to volume step
+        lot_size = round(lot_size / info.volume_step) * info.volume_step
+        
+        # Clamp to min/max
+        lot_size = max(info.volume_min, min(lot_size, info.volume_max))
+        
+        return round(lot_size, 2)
     
-    def close(self) -> None:
-        """Close the HTTP session."""
-        if self._session:
-            self._session.close()
-            self._session = None
+    def get_pip_value(self, symbol: str, volume: float = 1.0) -> float:
+        """Get pip value in account currency for given volume."""
+        info = self.get_symbol_info(symbol)
+        if info is None:
+            return 0.0
+        
+        return info.trade_tick_value * (info.trade_tick_size / info.point) * volume
     
     def __enter__(self):
+        """Context manager entry."""
+        self.connect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        """Context manager exit."""
+        self.disconnect()

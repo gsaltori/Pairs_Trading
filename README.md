@@ -1,290 +1,208 @@
 # Pairs Trading System
 
-A professional, modular pairs trading system for Forex markets using the OANDA API.
+Professional statistical arbitrage system for Forex markets using **IC Markets Global** via **MetaTrader 5**.
 
 ## Overview
 
-This system implements statistical arbitrage through pairs trading - a market-neutral strategy that profits from the mean reversion of price spreads between correlated currency pairs.
+This system implements institutional-grade pairs trading with:
+- Statistical pair selection (correlation + cointegration)
+- Dynamic hedge ratio calculation (OLS regression)
+- Z-score based entry/exit signals
+- Professional risk management
+- Walk-forward optimization
+- Real-time execution via MT5
 
-### Key Features
-
-- **Statistical Analysis**: Correlation analysis, cointegration testing (Engle-Granger, Johansen), Hurst exponent
-- **Dynamic Spread Building**: Rolling hedge ratios, z-score calculation, mean reversion detection
-- **Signal Generation**: Entry/exit signals based on z-score thresholds with correlation filters
-- **Risk Management**: Position sizing, drawdown limits, exposure management
-- **Walk-Forward Optimization**: Out-of-sample validated parameter optimization
-- **Multiple Trading Modes**: Backtest, paper trading, and live trading
-- **OANDA Integration**: Full API support for data fetching and order execution
-
-## Project Structure
+## Architecture
 
 ```
 Pairs_Trading/
 ├── config/
-│   ├── settings.py          # System configuration and parameters
-│   └── broker_config.py     # OANDA API configuration
+│   ├── settings.py          # Configuration management
+│   └── broker_config.py     # MT5 connection settings
 ├── src/
 │   ├── data/
-│   │   ├── broker_client.py # OANDA REST API client
-│   │   └── data_manager.py  # Data fetching and caching
+│   │   ├── broker_client.py # MT5 API client
+│   │   └── data_manager.py  # Data caching & preprocessing
 │   ├── analysis/
 │   │   ├── correlation.py   # Correlation analysis
-│   │   ├── cointegration.py # Cointegration testing
+│   │   ├── cointegration.py # ADF & Johansen tests
 │   │   └── spread_builder.py# Spread construction
 │   ├── strategy/
 │   │   ├── signals.py       # Signal generation
-│   │   └── pairs_strategy.py# Main strategy logic
+│   │   └── pairs_strategy.py# Strategy orchestration
 │   ├── risk/
-│   │   └── risk_manager.py  # Risk management
+│   │   └── risk_manager.py  # Position sizing & limits
 │   ├── backtest/
-│   │   └── backtest_engine.py# Backtesting engine
+│   │   └── backtest_engine.py# Backtesting with costs
 │   ├── optimization/
 │   │   └── optimizer.py     # Walk-forward optimization
 │   └── execution/
 │       └── executor.py      # Live order execution
-├── logs/
-├── data/
-│   ├── historical/
-│   └── cache/
-├── results/
-│   ├── backtests/
-│   └── optimization/
-├── tests/
-├── scripts/
-├── main.py                   # Main entry point
-├── requirements.txt
-└── README.md
+├── scripts/                  # Example scripts
+├── tests/                    # Unit tests
+└── main.py                   # CLI entry point
 ```
+
+## Requirements
+
+- Python 3.10+
+- MetaTrader 5 terminal (IC Markets Global)
+- Windows OS (MT5 Python API requirement)
 
 ## Installation
 
-### Prerequisites
+1. **Install MetaTrader 5** from IC Markets Global
 
-- Python 3.10 or higher
-- OANDA account (practice or live)
-
-### Setup
-
-1. Clone or download the repository:
+2. **Clone and setup**:
 ```bash
+git clone <repository>
 cd Pairs_Trading
-```
-
-2. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-4. Configure OANDA credentials:
-
-Create a `.env` file in the project root:
-```env
-OANDA_ACCOUNT_ID=your_account_id
-OANDA_API_KEY=your_api_key
-OANDA_ENVIRONMENT=practice  # or 'live'
+3. **Configure credentials**:
+```bash
+cp .env.example .env
+# Edit .env with your MT5 credentials
 ```
 
-Or create `config/broker_credentials.yaml`:
-```yaml
-account_id: "your_account_id"
-api_key: "your_api_key"
-environment: "practice"
+## Configuration
+
+Edit `.env`:
+```ini
+MT5_LOGIN=12345678
+MT5_PASSWORD=your_password
+MT5_SERVER=ICMarketsSC-Demo  # or ICMarketsSC-Live
+MT5_MAGIC_NUMBER=123456
 ```
 
-## Quick Start
+## Usage
 
-### 1. Screen for Tradeable Pairs
-
+### Screen for Pairs
 ```bash
 python main.py screen --days 180
 ```
 
-This analyzes all major currency pairs and identifies those with:
-- High correlation (>0.70)
-- Statistical cointegration
-- Suitable mean reversion characteristics (half-life < 50 bars)
-
-### 2. Run a Backtest
-
+### Backtest
 ```bash
-python main.py backtest --pair EUR_USD,GBP_USD --days 365
+python main.py backtest --pair EURUSD,GBPUSD --days 365
 ```
 
-Output includes:
-- Total return and annualized return
-- Sharpe ratio, Sortino ratio, Calmar ratio
-- Maximum drawdown
-- Win rate and profit factor
-- Complete trade log
-
-### 3. Walk-Forward Optimization
-
+### Optimize
 ```bash
-python main.py optimize --pair EUR_USD,GBP_USD --days 730
+python main.py optimize --pair EURUSD,GBPUSD --days 730
 ```
 
-Performs rolling in-sample/out-of-sample optimization to find robust parameters.
-
-### 4. Paper Trading
-
+### Paper Trading
 ```bash
-python main.py paper --pair EUR_USD,GBP_USD
+python main.py paper --pair EURUSD,GBPUSD --interval 60
 ```
 
-Trades with real market data but simulated execution. Perfect for strategy validation.
-
-### 5. Live Trading
-
+### Live Trading
 ```bash
-python main.py live --pair EUR_USD,GBP_USD
+python main.py live --pair EURUSD,GBPUSD --interval 60
 ```
-
-**⚠️ WARNING: This executes real trades with real money!**
 
 ## Strategy Logic
 
-### Entry Signals
+### Pair Selection
+1. **Correlation Filter**: Pearson correlation > 0.70
+2. **Cointegration Test**: Engle-Granger ADF p-value < 0.05
+3. **Mean Reversion**: Half-life < 50 bars
 
-- **Long Spread** (Buy A, Sell B): Z-score ≤ -2.0 AND correlation > 0.70
-- **Short Spread** (Sell A, Buy B): Z-score ≥ +2.0 AND correlation > 0.70
+### Spread Construction
+```
+Spread = Price_A - β × Price_B
+```
+Where β is the hedge ratio from OLS regression.
+
+### Entry Signals
+- **Long Spread**: Z-score ≤ -2.0 (spread undervalued)
+- **Short Spread**: Z-score ≥ +2.0 (spread overvalued)
 
 ### Exit Signals
+- **Take Profit**: Z-score returns to ±0.2
+- **Stop Loss**: Z-score reaches ±3.0 or correlation breakdown
 
-- **Mean Reversion Exit**: Z-score returns to ±0.2 band
-- **Stop Loss**: |Z-score| ≥ 3.0
-- **Correlation Breakdown**: Correlation drops below 0.60
+## Risk Management
 
-### Position Sizing
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Max Risk/Trade | 1% | Capital at risk per position |
+| Max Exposure | 10% | Total portfolio exposure |
+| Max Open Pairs | 3 | Concurrent positions |
+| Max Drawdown | 15% | Halt threshold |
+| Max Daily Loss | 3% | Daily loss limit |
 
-Risk-based sizing: each trade risks 1% of account equity, balanced across both legs using the hedge ratio.
+## Default Pairs
 
-## Configuration
+| Pair | Rationale |
+|------|-----------|
+| EURUSD/GBPUSD | European majors |
+| AUDUSD/NZDUSD | Oceanic currencies |
+| EURJPY/USDJPY | Yen crosses |
+| EURCHF/USDCHF | Swiss franc pairs |
 
-Edit `config/settings.py` or create a YAML configuration file:
+## Backtest Costs
 
-```yaml
-# spread_params
-entry_zscore: 2.0
-exit_zscore: 0.2
-stop_loss_zscore: 3.0
-regression_window: 120
-zscore_window: 60
-min_correlation: 0.70
-max_half_life: 50
+- **Spread**: 1.5 pips
+- **Slippage**: 0.5 pips
+- **Commission**: $7/lot
 
-# risk_params
-max_risk_per_trade: 0.01
-max_total_exposure: 0.10
-max_open_pairs: 3
-max_drawdown: 0.15
+## API Reference
 
-# backtest_params
-initial_capital: 10000
-spread_cost_pips: 1.5
-slippage_pips: 0.5
+### MT5Client
+```python
+from src.data.broker_client import MT5Client, Timeframe
+
+client = MT5Client(config)
+client.connect()
+
+# Get historical data
+candles = client.get_candles("EURUSD", Timeframe.H1, 500)
+
+# Execute order
+result = client.market_order("EURUSD", OrderType.BUY, 0.1)
 ```
 
-## Default Pairs Universe
-
-The system comes configured with these correlated pairs:
-
-| Pair A    | Pair B    | Rationale                    |
-|-----------|-----------|------------------------------|
-| EUR_USD   | GBP_USD   | Dollar-based majors          |
-| AUD_USD   | NZD_USD   | Commodity currencies         |
-| EUR_JPY   | USD_JPY   | Yen crosses                  |
-| EUR_CHF   | USD_CHF   | Franc crosses                |
-| GBP_USD   | EUR_GBP   | Sterling relationships       |
-
-## Performance Metrics
-
-The system calculates comprehensive metrics:
-
-- **Returns**: Total, annualized, risk-adjusted
-- **Risk**: Sharpe ratio, Sortino ratio, Calmar ratio
-- **Drawdown**: Maximum drawdown, duration
-- **Trade Stats**: Win rate, profit factor, expectancy
-- **Costs**: Transaction costs, slippage impact
-
-## API Usage
-
+### PairsTradingSystem
 ```python
-from config.settings import Settings
-from config.broker_config import BrokerConfig
 from main import PairsTradingSystem
 
-# Initialize
-settings = Settings()
-broker_config = BrokerConfig.from_env()
-system = PairsTradingSystem(settings, broker_config)
+system = PairsTradingSystem()
+
+# Screen pairs
+results = system.screen_pairs(days=180)
 
 # Run backtest
-from datetime import datetime, timedelta
-end_date = datetime.now()
-start_date = end_date - timedelta(days=365)
-
-result = system.run_backtest(
-    pair=('EUR_USD', 'GBP_USD'),
-    start_date=start_date,
-    end_date=end_date
-)
-
-print(result.summary())
+backtest = system.run_backtest(("EURUSD", "GBPUSD"), days=365)
 ```
-
-## Testing
-
-```bash
-pytest tests/ -v --cov=src
-```
-
-## Logging
-
-Logs are stored in `logs/` directory. Configure logging level:
-
-```bash
-python main.py backtest --pair EUR_USD,GBP_USD --log-level DEBUG --log-file logs/backtest.log
-```
-
-## Important Notes
-
-1. **Paper Trade First**: Always validate strategies with paper trading before going live.
-
-2. **Risk Management**: Never risk more than you can afford to lose. The default 1% risk per trade is conservative.
-
-3. **Market Hours**: Forex markets are open 24/5. The system handles this automatically.
-
-4. **Slippage**: Real execution may differ from backtest due to slippage and variable spreads.
-
-5. **Cointegration Changes**: Pairs can lose their statistical relationships. Monitor regularly.
 
 ## Troubleshooting
 
-### "Insufficient data" error
-- Ensure OANDA credentials are correct
-- Check if the instruments are available in your account type
-- Increase `--days` parameter for more data
+### MT5 Connection Failed
+- Verify MT5 terminal is running
+- Check login credentials
+- Ensure correct server name
 
-### "Connection refused" error
+### No Data Received
+- Verify symbol names (check for suffix)
+- Ensure symbol is in Market Watch
 - Check internet connection
-- Verify OANDA API status
-- Ensure firewall allows outbound HTTPS
 
-### Low Sharpe ratio in backtest
-- Try different pairs from the screener
-- Adjust z-score thresholds
-- Run walk-forward optimization
-
-## License
-
-MIT License - See LICENSE file for details.
+### Order Rejected
+- Check account balance
+- Verify symbol trading hours
+- Check deviation settings
 
 ## Disclaimer
 
-This software is for educational purposes only. Trading foreign exchange carries a high level of risk and may not be suitable for all investors. Past performance is not indicative of future results. The developers assume no responsibility for any trading losses.
+**This software is for educational purposes only.**
+
+Trading forex involves substantial risk of loss. Past performance is not indicative of future results. Never trade with money you cannot afford to lose.
+
+The authors are not responsible for any financial losses incurred through the use of this software.
+
+## License
+
+MIT License

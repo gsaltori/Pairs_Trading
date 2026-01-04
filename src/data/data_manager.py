@@ -1,26 +1,22 @@
 """
-Data Manager
+Data Manager for Pairs Trading System.
 
-Handles data fetching, caching, and preprocessing for the Pairs Trading System.
-Provides a unified interface for accessing market data from any source.
+Handles:
+- Data retrieval from MT5
+- Caching (Parquet format)
+- Preprocessing and alignment
+- Multiple pair synchronization
 """
 
 import pandas as pd
 import numpy as np
-from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Union
-import pickle
-import hashlib
+from pathlib import Path
+from typing import Optional, List, Dict, Tuple
 import logging
-import json
+import hashlib
 
-import sys
-sys.path.append(str(__file__).rsplit('\\', 3)[0])
-
-from config.settings import Settings, Timeframe
-from config.broker_config import BrokerConfig
-from src.data.broker_client import OandaClient
+from src.data.broker_client import MT5Client, Timeframe
 
 
 logger = logging.getLogger(__name__)
@@ -28,363 +24,408 @@ logger = logging.getLogger(__name__)
 
 class DataManager:
     """
-    Manages market data for the Pairs Trading System.
+    Manages data retrieval, caching, and preprocessing for pairs trading.
     
-    Responsibilities:
-    - Fetching data from broker
-    - Caching data to disk
-    - Data validation and preprocessing
-    - Providing unified access to data
+    Features:
+    - Automatic caching with Parquet format
+    - Data alignment between pairs
+    - Missing data handling
+    - Timezone normalization
     """
     
-    def __init__(self, settings: Settings, broker_config: Optional[BrokerConfig] = None):
+    def __init__(
+        self,
+        client: MT5Client,
+        cache_dir: str = "data/cache",
+        cache_expiry_hours: int = 1
+    ):
         """
-        Initialize the Data Manager.
+        Initialize DataManager.
         
         Args:
-            settings: System settings
-            broker_config: Broker configuration (uses env vars if None)
+            client: MT5Client instance
+            cache_dir: Directory for cached data
+            cache_expiry_hours: Cache expiry time in hours
         """
-        self.settings = settings
-        self.broker_config = broker_config or BrokerConfig.from_env()
-        self._client: Optional[OandaClient] = None
-        self._data_cache: Dict[str, pd.DataFrame] = {}
+        self.client = client
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_expiry = timedelta(hours=cache_expiry_hours)
         
-        # Ensure directories exist
-        self.settings.historical_dir.mkdir(parents=True, exist_ok=True)
-        self.settings.cache_dir.mkdir(parents=True, exist_ok=True)
+        # In-memory cache for current session
+        self._memory_cache: Dict[str, pd.DataFrame] = {}
     
-    @property
-    def client(self) -> OandaClient:
-        """Get or create OANDA client."""
-        if self._client is None:
-            self._client = OandaClient(self.broker_config)
-        return self._client
+    def _get_cache_path(self, symbol: str, timeframe: Timeframe) -> Path:
+        """Generate cache file path."""
+        return self.cache_dir / f"{symbol}_{timeframe.name}.parquet"
     
-    def _get_cache_key(self, instrument: str, timeframe: Timeframe, start: datetime, end: datetime) -> str:
-        """Generate unique cache key for data request."""
-        key_str = f"{instrument}_{timeframe.value}_{start.date()}_{end.date()}"
-        return hashlib.md5(key_str.encode()).hexdigest()
+    def _is_cache_valid(self, cache_path: Path) -> bool:
+        """Check if cache file is still valid."""
+        if not cache_path.exists():
+            return False
+        
+        modified_time = datetime.fromtimestamp(cache_path.stat().st_mtime)
+        return datetime.now() - modified_time < self.cache_expiry
     
-    def _get_cache_path(self, instrument: str, timeframe: Timeframe) -> Path:
-        """Get path to cached data file."""
-        return self.settings.historical_dir / f"{instrument}_{timeframe.value}.parquet"
+    def _load_from_cache(self, cache_path: Path) -> Optional[pd.DataFrame]:
+        """Load data from cache file."""
+        try:
+            if cache_path.exists():
+                return pd.read_parquet(cache_path)
+        except Exception as e:
+            logger.warning(f"Failed to load cache {cache_path}: {e}")
+        return None
     
-    def fetch_data(
+    def _save_to_cache(self, data: pd.DataFrame, cache_path: Path):
+        """Save data to cache file."""
+        try:
+            data.to_parquet(cache_path)
+            logger.debug(f"Cached data to {cache_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save cache {cache_path}: {e}")
+    
+    def get_candles(
         self,
-        instrument: str,
-        timeframe: Optional[Timeframe] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        symbol: str,
+        timeframe: Timeframe,
+        count: int = 500,
         use_cache: bool = True
     ) -> pd.DataFrame:
         """
-        Fetch historical data for an instrument.
+        Get OHLC data for a symbol.
         
         Args:
-            instrument: Instrument name (e.g., 'EUR_USD')
-            timeframe: Timeframe (default from settings)
-            start_date: Start date (default: lookback_days ago)
-            end_date: End date (default: now)
-            use_cache: Whether to use cached data
+            symbol: Trading symbol
+            timeframe: Timeframe enum
+            count: Number of candles
+            use_cache: Whether to use caching
             
         Returns:
-            DataFrame with OHLCV data
+            DataFrame with OHLC data
         """
-        timeframe = timeframe or self.settings.timeframe
-        end_date = end_date or datetime.utcnow()
-        start_date = start_date or (end_date - timedelta(days=self.settings.lookback_days))
+        cache_key = f"{symbol}_{timeframe.name}_{count}"
         
         # Check memory cache first
-        cache_key = f"{instrument}_{timeframe.value}"
-        if use_cache and cache_key in self._data_cache:
-            cached_df = self._data_cache[cache_key]
-            if not cached_df.empty:
-                # Check if cached data covers the requested range
-                if cached_df.index[0] <= start_date and cached_df.index[-1] >= end_date - timedelta(hours=1):
-                    return cached_df[(cached_df.index >= start_date) & (cached_df.index <= end_date)].copy()
+        if use_cache and cache_key in self._memory_cache:
+            logger.debug(f"Memory cache hit: {cache_key}")
+            return self._memory_cache[cache_key].copy()
         
-        # Check disk cache
-        cache_path = self._get_cache_path(instrument, timeframe)
-        if use_cache and cache_path.exists():
-            logger.info(f"Loading cached data for {instrument}")
-            cached_df = pd.read_parquet(cache_path)
-            
-            # Update if needed
-            if not cached_df.empty and cached_df.index[-1] < end_date - timedelta(hours=1):
-                logger.info(f"Updating cached data for {instrument}")
-                new_data = self.client.get_historical_data(
-                    instrument=instrument,
-                    timeframe=timeframe,
-                    start_date=cached_df.index[-1],
-                    end_date=end_date
-                )
-                
-                if not new_data.empty:
-                    cached_df = pd.concat([cached_df, new_data])
-                    cached_df = cached_df[~cached_df.index.duplicated(keep='last')]
-                    cached_df.sort_index(inplace=True)
-                    cached_df.to_parquet(cache_path)
-            
-            self._data_cache[cache_key] = cached_df
-            return cached_df[(cached_df.index >= start_date) & (cached_df.index <= end_date)].copy()
+        # Check file cache
+        cache_path = self._get_cache_path(symbol, timeframe)
+        if use_cache and self._is_cache_valid(cache_path):
+            data = self._load_from_cache(cache_path)
+            if data is not None and len(data) >= count:
+                data = data.tail(count)
+                self._memory_cache[cache_key] = data
+                logger.debug(f"File cache hit: {cache_path}")
+                return data.copy()
         
-        # Fetch from broker
-        logger.info(f"Fetching {instrument} data from broker")
-        df = self.client.get_historical_data(
-            instrument=instrument,
-            timeframe=timeframe,
-            start_date=start_date,
-            end_date=end_date
-        )
+        # Fetch from MT5
+        logger.info(f"Fetching {count} candles for {symbol} {timeframe.name}")
+        data = self.client.get_candles(symbol, timeframe, count)
         
-        if not df.empty:
-            # Cache to disk
-            df.to_parquet(cache_path)
-            # Cache in memory
-            self._data_cache[cache_key] = df
+        if data.empty:
+            logger.warning(f"No data received for {symbol}")
+            return pd.DataFrame()
         
-        return df
+        # Cache the data
+        if use_cache:
+            self._save_to_cache(data, cache_path)
+            self._memory_cache[cache_key] = data
+        
+        return data.copy()
     
-    def fetch_pair_data(
+    def get_close_prices(
         self,
-        pair: Tuple[str, str],
-        timeframe: Optional[Timeframe] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        symbol: str,
+        timeframe: Timeframe,
+        count: int = 500,
         use_cache: bool = True
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ) -> pd.Series:
+        """Get close prices as Series."""
+        data = self.get_candles(symbol, timeframe, count, use_cache)
+        if data.empty:
+            return pd.Series(dtype=float)
+        return data['close']
+    
+    def get_pair_data(
+        self,
+        symbol_a: str,
+        symbol_b: str,
+        timeframe: Timeframe,
+        count: int = 500,
+        align: bool = True
+    ) -> Tuple[pd.Series, pd.Series]:
         """
-        Fetch data for a pair of instruments.
+        Get aligned price data for a pair.
         
         Args:
-            pair: Tuple of instrument names
-            timeframe: Timeframe
-            start_date: Start date
-            end_date: End date
-            use_cache: Whether to use cache
+            symbol_a: First symbol
+            symbol_b: Second symbol
+            timeframe: Timeframe enum
+            count: Number of candles
+            align: Whether to align timestamps
             
         Returns:
-            Tuple of DataFrames for each instrument
+            Tuple of (price_a, price_b) Series
         """
-        instrument_a, instrument_b = pair
+        # Get data for both symbols
+        data_a = self.get_candles(symbol_a, timeframe, count)
+        data_b = self.get_candles(symbol_b, timeframe, count)
         
-        df_a = self.fetch_data(instrument_a, timeframe, start_date, end_date, use_cache)
-        df_b = self.fetch_data(instrument_b, timeframe, start_date, end_date, use_cache)
+        if data_a.empty or data_b.empty:
+            logger.warning(f"Missing data for {symbol_a}/{symbol_b}")
+            return pd.Series(dtype=float), pd.Series(dtype=float)
         
-        return df_a, df_b
+        price_a = data_a['close']
+        price_b = data_b['close']
+        
+        if align:
+            # Align on common index
+            common_index = price_a.index.intersection(price_b.index)
+            price_a = price_a.loc[common_index]
+            price_b = price_b.loc[common_index]
+            
+            logger.debug(f"Aligned {len(common_index)} bars for {symbol_a}/{symbol_b}")
+        
+        return price_a, price_b
     
-    def get_aligned_prices(
+    def get_multiple_pairs_data(
         self,
-        pair: Tuple[str, str],
-        timeframe: Optional[Timeframe] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        price_col: str = 'close'
-    ) -> pd.DataFrame:
+        pairs: List[Tuple[str, str]],
+        timeframe: Timeframe,
+        count: int = 500
+    ) -> Dict[Tuple[str, str], Tuple[pd.Series, pd.Series]]:
         """
-        Get aligned prices for a pair of instruments.
+        Get data for multiple pairs efficiently.
         
         Args:
-            pair: Tuple of instrument names
-            timeframe: Timeframe
-            start_date: Start date
-            end_date: End date
-            price_col: Column to use ('open', 'high', 'low', 'close')
+            pairs: List of (symbol_a, symbol_b) tuples
+            timeframe: Timeframe enum
+            count: Number of candles
             
         Returns:
-            DataFrame with aligned prices for both instruments
+            Dictionary mapping pairs to (price_a, price_b) tuples
         """
-        df_a, df_b = self.fetch_pair_data(pair, timeframe, start_date, end_date)
+        # Collect unique symbols
+        symbols = set()
+        for a, b in pairs:
+            symbols.add(a)
+            symbols.add(b)
         
-        # Align indices
-        aligned = pd.DataFrame({
-            pair[0]: df_a[price_col],
-            pair[1]: df_b[price_col]
-        })
+        # Fetch all symbols
+        symbol_data = {}
+        for symbol in symbols:
+            data = self.get_candles(symbol, timeframe, count)
+            if not data.empty:
+                symbol_data[symbol] = data['close']
         
-        # Drop any rows with missing data
-        aligned.dropna(inplace=True)
-        
-        return aligned
-    
-    def get_all_pairs_data(
-        self,
-        timeframe: Optional[Timeframe] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> Dict[Tuple[str, str], pd.DataFrame]:
-        """
-        Fetch aligned data for all pairs in the universe.
-        
-        Returns:
-            Dictionary mapping pair tuple to aligned price DataFrame
-        """
+        # Build pair data
         result = {}
-        
-        for pair in self.settings.pairs_universe:
-            logger.info(f"Fetching data for pair: {pair}")
-            try:
-                aligned = self.get_aligned_prices(pair, timeframe, start_date, end_date)
-                if len(aligned) > 0:
-                    result[pair] = aligned
-                else:
-                    logger.warning(f"No data for pair: {pair}")
-            except Exception as e:
-                logger.error(f"Error fetching data for {pair}: {e}")
+        for pair in pairs:
+            symbol_a, symbol_b = pair
+            
+            if symbol_a not in symbol_data or symbol_b not in symbol_data:
+                logger.warning(f"Missing data for pair {symbol_a}/{symbol_b}")
+                continue
+            
+            price_a = symbol_data[symbol_a]
+            price_b = symbol_data[symbol_b]
+            
+            # Align timestamps
+            common_index = price_a.index.intersection(price_b.index)
+            result[pair] = (
+                price_a.loc[common_index],
+                price_b.loc[common_index]
+            )
         
         return result
     
-    def preprocess_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def get_historical_data(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start_date: datetime,
+        end_date: Optional[datetime] = None
+    ) -> pd.DataFrame:
         """
-        Preprocess raw OHLCV data.
-        
-        Steps:
-        - Handle missing values
-        - Remove outliers
-        - Calculate returns
+        Get historical data for a specific date range.
         
         Args:
-            df: Raw OHLCV DataFrame
+            symbol: Trading symbol
+            timeframe: Timeframe enum
+            start_date: Start datetime
+            end_date: End datetime (None = now)
+            
+        Returns:
+            DataFrame with OHLC data
+        """
+        if end_date is None:
+            end_date = datetime.now()
+        
+        return self.client.get_candles_range(symbol, timeframe, start_date, end_date)
+    
+    def preprocess_data(
+        self,
+        data: pd.DataFrame,
+        fill_method: str = 'ffill',
+        remove_outliers: bool = False,
+        outlier_std: float = 4.0
+    ) -> pd.DataFrame:
+        """
+        Preprocess OHLC data.
+        
+        Args:
+            data: Input DataFrame
+            fill_method: Method for filling NaN ('ffill', 'interpolate')
+            remove_outliers: Whether to remove outliers
+            outlier_std: Standard deviations for outlier detection
             
         Returns:
             Preprocessed DataFrame
         """
-        df = df.copy()
+        df = data.copy()
         
-        # Forward fill small gaps (up to 3 bars)
-        df = df.ffill(limit=3)
+        # Handle missing values
+        if fill_method == 'ffill':
+            df = df.ffill()
+        elif fill_method == 'interpolate':
+            df = df.interpolate(method='time')
         
-        # Drop remaining NaN
-        df.dropna(inplace=True)
+        # Remove remaining NaN
+        df = df.dropna()
         
-        # Remove obvious outliers (price changes > 5% in one bar)
-        if 'close' in df.columns:
+        # Remove outliers if requested
+        if remove_outliers and 'close' in df.columns:
             returns = df['close'].pct_change()
-            df = df[returns.abs() < 0.05]
-        
-        # Calculate log returns
-        if 'close' in df.columns:
-            df['log_return'] = np.log(df['close'] / df['close'].shift(1))
+            mean = returns.mean()
+            std = returns.std()
+            
+            mask = abs(returns - mean) < outlier_std * std
+            df = df[mask]
         
         return df
     
-    def validate_data(self, df: pd.DataFrame, min_bars: int = 100) -> bool:
+    def calculate_returns(
+        self,
+        prices: pd.Series,
+        method: str = 'log'
+    ) -> pd.Series:
         """
-        Validate data quality.
+        Calculate returns from prices.
         
         Args:
-            df: DataFrame to validate
+            prices: Price series
+            method: 'log' or 'simple'
+            
+        Returns:
+            Returns series
+        """
+        if method == 'log':
+            return np.log(prices / prices.shift(1))
+        else:
+            return prices.pct_change()
+    
+    def synchronize_series(
+        self,
+        series_list: List[pd.Series],
+        method: str = 'inner'
+    ) -> List[pd.Series]:
+        """
+        Synchronize multiple series on common timestamps.
+        
+        Args:
+            series_list: List of Series to synchronize
+            method: 'inner' (common only) or 'outer' (all timestamps)
+            
+        Returns:
+            List of synchronized Series
+        """
+        if not series_list:
+            return []
+        
+        # Find common index
+        if method == 'inner':
+            common_index = series_list[0].index
+            for s in series_list[1:]:
+                common_index = common_index.intersection(s.index)
+        else:
+            common_index = series_list[0].index
+            for s in series_list[1:]:
+                common_index = common_index.union(s.index)
+        
+        return [s.reindex(common_index) for s in series_list]
+    
+    def clear_cache(self, symbol: Optional[str] = None):
+        """Clear cached data."""
+        if symbol:
+            # Clear specific symbol
+            patterns = [f"{symbol}_*.parquet"]
+            keys_to_remove = [k for k in self._memory_cache if symbol in k]
+        else:
+            # Clear all
+            patterns = ["*.parquet"]
+            keys_to_remove = list(self._memory_cache.keys())
+        
+        # Clear memory cache
+        for key in keys_to_remove:
+            del self._memory_cache[key]
+        
+        # Clear file cache
+        for pattern in patterns:
+            for f in self.cache_dir.glob(pattern):
+                f.unlink()
+                logger.debug(f"Deleted cache file: {f}")
+    
+    def get_spread_info(self, symbol: str) -> Optional[float]:
+        """Get current spread for symbol in pips."""
+        tick = self.client.get_tick(symbol)
+        if tick is None:
+            return None
+        
+        info = self.client.get_symbol_info(symbol)
+        if info is None:
+            return None
+        
+        spread_points = tick['ask'] - tick['bid']
+        spread_pips = spread_points / info.point / 10  # Convert to pips
+        
+        return spread_pips
+    
+    def validate_pair_data(
+        self,
+        price_a: pd.Series,
+        price_b: pd.Series,
+        min_bars: int = 100
+    ) -> Tuple[bool, str]:
+        """
+        Validate pair data quality.
+        
+        Args:
+            price_a: First price series
+            price_b: Second price series
             min_bars: Minimum required bars
             
         Returns:
-            True if data passes validation
+            (is_valid, message)
         """
-        if df.empty:
-            logger.warning("Empty DataFrame")
-            return False
+        if len(price_a) < min_bars:
+            return False, f"Insufficient data for first symbol: {len(price_a)} < {min_bars}"
         
-        if len(df) < min_bars:
-            logger.warning(f"Insufficient data: {len(df)} bars (min: {min_bars})")
-            return False
+        if len(price_b) < min_bars:
+            return False, f"Insufficient data for second symbol: {len(price_b)} < {min_bars}"
         
-        # Check for gaps
-        if isinstance(df.index, pd.DatetimeIndex):
-            time_diffs = df.index.to_series().diff()
-            # More than 10% missing data is suspicious
-            expected_interval = time_diffs.mode().iloc[0]
-            gaps = (time_diffs > expected_interval * 2).sum()
-            gap_ratio = gaps / len(df)
-            
-            if gap_ratio > 0.1:
-                logger.warning(f"High gap ratio: {gap_ratio:.2%}")
-                return False
+        if len(price_a) != len(price_b):
+            return False, f"Length mismatch: {len(price_a)} vs {len(price_b)}"
         
-        # Check for zero/negative prices
-        if 'close' in df.columns:
-            if (df['close'] <= 0).any():
-                logger.warning("Zero or negative prices found")
-                return False
+        # Check for excessive NaN
+        nan_pct_a = price_a.isna().sum() / len(price_a)
+        nan_pct_b = price_b.isna().sum() / len(price_b)
         
-        return True
-    
-    def get_current_prices(self, instruments: List[str]) -> Dict[str, Dict[str, float]]:
-        """
-        Get current market prices.
+        if nan_pct_a > 0.05:
+            return False, f"Too many NaN in first symbol: {nan_pct_a:.1%}"
         
-        Args:
-            instruments: List of instrument names
-            
-        Returns:
-            Dictionary mapping instrument to price data
-        """
-        return self.client.get_current_prices(instruments)
-    
-    def clear_cache(self, instrument: Optional[str] = None) -> None:
-        """
-        Clear cached data.
+        if nan_pct_b > 0.05:
+            return False, f"Too many NaN in second symbol: {nan_pct_b:.1%}"
         
-        Args:
-            instrument: Specific instrument to clear (None = all)
-        """
-        if instrument:
-            # Clear memory cache
-            keys_to_delete = [k for k in self._data_cache if k.startswith(instrument)]
-            for k in keys_to_delete:
-                del self._data_cache[k]
-            
-            # Clear disk cache
-            for f in self.settings.historical_dir.glob(f"{instrument}_*.parquet"):
-                f.unlink()
-            
-            logger.info(f"Cleared cache for {instrument}")
-        else:
-            self._data_cache.clear()
-            for f in self.settings.historical_dir.glob("*.parquet"):
-                f.unlink()
-            logger.info("Cleared all cache")
-    
-    def save_metadata(self, pair: Tuple[str, str], metadata: Dict) -> None:
-        """
-        Save metadata for a pair (e.g., correlation stats, optimal parameters).
-        
-        Args:
-            pair: Instrument pair
-            metadata: Metadata dictionary
-        """
-        filename = f"{pair[0]}_{pair[1]}_metadata.json"
-        filepath = self.settings.cache_dir / filename
-        
-        with open(filepath, 'w') as f:
-            json.dump(metadata, f, indent=2, default=str)
-    
-    def load_metadata(self, pair: Tuple[str, str]) -> Optional[Dict]:
-        """
-        Load metadata for a pair.
-        
-        Args:
-            pair: Instrument pair
-            
-        Returns:
-            Metadata dictionary or None
-        """
-        filename = f"{pair[0]}_{pair[1]}_metadata.json"
-        filepath = self.settings.cache_dir / filename
-        
-        if filepath.exists():
-            with open(filepath, 'r') as f:
-                return json.load(f)
-        
-        return None
-    
-    def close(self) -> None:
-        """Close broker connection."""
-        if self._client:
-            self._client.close()
-            self._client = None
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        return True, "Data validation passed"
