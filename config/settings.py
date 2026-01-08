@@ -91,7 +91,7 @@ class RiskSettings:
     max_daily_loss: float = 0.03          # 3% max daily loss
 
 
-@dataclass 
+@dataclass
 class BacktestSettings:
     """Backtesting parameters."""
     
@@ -107,7 +107,7 @@ class BacktestSettings:
     fill_ratio: float = 1.0               # Percentage of orders filled
     
     # Data requirements
-    min_bars_required: int = 200          # Minimum bars for backtest
+    min_bars_required: int = 100          # Minimum bars for backtest
 
 
 @dataclass

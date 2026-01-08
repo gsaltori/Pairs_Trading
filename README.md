@@ -1,208 +1,195 @@
-# Pairs Trading System
+# Pairs Trading System - IC Markets Global
 
-Professional statistical arbitrage system for Forex markets using **IC Markets Global** via **MetaTrader 5**.
+Sistema institucional de pairs trading para Forex usando MetaTrader 5.
 
-## Overview
+## ⚠️ Filosofía del Sistema
 
-This system implements institutional-grade pairs trading with:
-- Statistical pair selection (correlation + cointegration)
-- Dynamic hedge ratio calculation (OLS regression)
-- Z-score based entry/exit signals
-- Professional risk management
-- Walk-forward optimization
-- Real-time execution via MT5
+**Preferimos CERO trades antes que trades estadísticamente inválidos.**
 
-## Architecture
+Este sistema implementa filtros extremadamente estrictos. La mayoría de los pares serán rechazados. Esto es por diseño.
+
+## Quick Start
+
+### 1. Descargar Datos
+
+```bash
+# Todos los pares forex (recomendado)
+python scripts/download_data.py --all --days 730
+
+# O pares específicos
+python scripts/download_data.py --symbols EURUSD,GBPUSD,AUDUSD,NZDUSD,EURJPY,GBPJPY --days 730
+```
+
+### 2. Screening ESTRICTO (Recomendado)
+
+```bash
+# Screening estricto para H1
+python scripts/strict_screen.py --backtest --save
+
+# Para H4 (puede mostrar más pares)
+python scripts/strict_screen.py --timeframe H4 --backtest --save
+
+# Ver todos los pares analizados
+python scripts/strict_screen.py --show-all
+```
+
+### 3. Screening Original (Menos Estricto)
+
+```bash
+python scripts/institutional_screen.py --backtest --save
+```
+
+## Filtros Estrictos por Timeframe
+
+| Timeframe | Max Half-life | Optimal HL | Min Trades/Year |
+|-----------|---------------|------------|-----------------|
+| M15       | 40 bars       | 5-20       | 20              |
+| M30       | 50 bars       | 8-30       | 15              |
+| H1        | 60 bars       | 10-40      | 12              |
+| H4        | 120 bars      | 15-60      | 8               |
+| D1        | 40 bars       | 5-25       | 5               |
+
+## Filtros DUROS (No Negociables)
+
+### 1. Relación Económica
+Solo pares con relación económica directa:
+- EURUSD / GBPUSD (Europeas vs USD)
+- AUDUSD / NZDUSD (Oceanía vs USD)
+- EURJPY / GBPJPY (Europeas vs JPY)
+- AUDJPY / NZDJPY (Oceanía vs JPY)
+- EURJPY / CHFJPY (Safe havens vs JPY)
+
+### 2. Correlación
+- Pearson ≥ 0.70
+- Spearman ≥ 0.70
+- Estabilidad ≥ 60%
+
+### 3. Cointegración
+- Engle-Granger p < 0.02 (muy estricto)
+- Johansen trace > critical value × 1.10
+- Estabilidad rolling (< 20% breakdown)
+
+### 4. Half-life
+- **RECHAZO AUTOMÁTICO** si excede máximo del timeframe
+- No es un "score", es un filtro duro
+
+### 5. Hurst Exponent
+- **RECHAZO AUTOMÁTICO** si Hurst > 0.55
+- Objetivo: Hurst < 0.50 (mean-reverting)
+
+### 6. Frecuencia de Trades
+- **RECHAZO** si trades estimados/año < mínimo del timeframe
+
+## Output Esperado
+
+Con filtros estrictos, espera:
+- **0-2 pares** que pasen TODOS los filtros
+- **>95%** de pares rechazados
+- Pares seleccionados con:
+  - Half-life corto
+  - Hurst < 0.50
+  - Cointegración fuerte
+  - Relación económica clara
+
+## Estructura del Proyecto
 
 ```
 Pairs_Trading/
 ├── config/
-│   ├── settings.py          # Configuration management
-│   └── broker_config.py     # MT5 connection settings
+│   ├── broker_config.py
+│   └── settings.py
 ├── src/
-│   ├── data/
-│   │   ├── broker_client.py # MT5 API client
-│   │   └── data_manager.py  # Data caching & preprocessing
 │   ├── analysis/
-│   │   ├── correlation.py   # Correlation analysis
-│   │   ├── cointegration.py # ADF & Johansen tests
-│   │   └── spread_builder.py# Spread construction
+│   │   ├── correlation.py
+│   │   ├── cointegration.py
+│   │   ├── spread_builder.py
+│   │   ├── pair_screener.py         # Original screener
+│   │   ├── institutional_selector.py # Institutional screener
+│   │   └── strict_selector.py       # STRICT screener (recommended)
 │   ├── strategy/
-│   │   ├── signals.py       # Signal generation
-│   │   └── pairs_strategy.py# Strategy orchestration
-│   ├── risk/
-│   │   └── risk_manager.py  # Position sizing & limits
+│   │   ├── signals.py
+│   │   ├── pairs_strategy.py
+│   │   └── adaptive_params.py
 │   ├── backtest/
-│   │   └── backtest_engine.py# Backtesting with costs
-│   ├── optimization/
-│   │   └── optimizer.py     # Walk-forward optimization
+│   │   └── backtest_engine.py
+│   ├── risk/
+│   │   └── risk_manager.py
 │   └── execution/
-│       └── executor.py      # Live order execution
-├── scripts/                  # Example scripts
-├── tests/                    # Unit tests
-└── main.py                   # CLI entry point
+│       └── executor.py
+├── scripts/
+│   ├── download_data.py
+│   ├── strict_screen.py             # ← USAR ESTE
+│   ├── institutional_screen.py
+│   ├── screen_pairs_offline.py
+│   ├── backtest_offline.py
+│   └── optimize_offline.py
+├── data/
+│   └── historical/
+├── results/
+│   ├── screening/
+│   ├── backtests/
+│   └── optimization/
+└── main.py
 ```
 
-## Requirements
+## Checklist de Validación Post-Screening
 
-- Python 3.10+
-- MetaTrader 5 terminal (IC Markets Global)
-- Windows OS (MT5 Python API requirement)
+### ✅ Filtros Estadísticos
+- [ ] Half-life ≤ máximo del timeframe
+- [ ] Hurst < 0.55
+- [ ] EG p-value < 0.02
+- [ ] ADF p-value < 0.05
+- [ ] Correlación Pearson ≥ 0.70
+- [ ] Correlación Spearman ≥ 0.70
+- [ ] Estabilidad cointegración > 80%
 
-## Installation
+### ✅ Validación Económica
+- [ ] Par tiene relación económica directa
+- [ ] Divisa común o economías ligadas
+- [ ] No es combinación arbitraria
 
-1. **Install MetaTrader 5** from IC Markets Global
+### ✅ Backtest Validation
+- [ ] Sharpe > 0.5 (idealmente > 1.0)
+- [ ] Max Drawdown < 20%
+- [ ] Win rate > 40%
+- [ ] Profit factor > 1.2
+- [ ] Trades suficientes (>20 en período)
 
-2. **Clone and setup**:
-```bash
-git clone <repository>
-cd Pairs_Trading
-pip install -r requirements.txt
-```
+### ✅ Pre-Production
+- [ ] Paper trading 2-4 semanas
+- [ ] Verificar ejecución real (slippage, spread)
+- [ ] Capital reducido inicial
+- [ ] Monitoreo de degradación estadística
 
-3. **Configure credentials**:
-```bash
-cp .env.example .env
-# Edit .env with your MT5 credentials
-```
+## Interpretación de Resultados
 
-## Configuration
+### Si 0 pares pasan:
+Esto es NORMAL. Significa que el mercado actual no ofrece oportunidades válidas.
+- **NO** relajes los filtros
+- Prueba otro timeframe (H4, D1)
+- Espera cambio de régimen de mercado
+- Añade más símbolos
 
-Edit `.env`:
-```ini
-MT5_LOGIN=12345678
-MT5_PASSWORD=your_password
-MT5_SERVER=ICMarketsSC-Demo  # or ICMarketsSC-Live
-MT5_MAGIC_NUMBER=123456
-```
+### Si 1-2 pares pasan:
+Excelente. Valida con backtest y paper trading antes de operar.
 
-## Usage
+### Si >5 pares pasan:
+Revisa que los filtros estén correctamente configurados. Algo puede estar mal.
 
-### Screen for Pairs
-```bash
-python main.py screen --days 180
-```
+## Warnings
 
-### Backtest
-```bash
-python main.py backtest --pair EURUSD,GBPUSD --days 365
-```
+⚠️ **NO relajar filtros para generar trades**
 
-### Optimize
-```bash
-python main.py optimize --pair EURUSD,GBPUSD --days 730
-```
+⚠️ **Half-life largo = NO tradeable** (no es cuestión de "paciencia")
 
-### Paper Trading
-```bash
-python main.py paper --pair EURUSD,GBPUSD --interval 60
-```
+⚠️ **Hurst > 0.55 = trending, NO mean-reverting**
 
-### Live Trading
-```bash
-python main.py live --pair EURUSD,GBPUSD --interval 60
-```
-
-## Strategy Logic
-
-### Pair Selection
-1. **Correlation Filter**: Pearson correlation > 0.70
-2. **Cointegration Test**: Engle-Granger ADF p-value < 0.05
-3. **Mean Reversion**: Half-life < 50 bars
-
-### Spread Construction
-```
-Spread = Price_A - β × Price_B
-```
-Where β is the hedge ratio from OLS regression.
-
-### Entry Signals
-- **Long Spread**: Z-score ≤ -2.0 (spread undervalued)
-- **Short Spread**: Z-score ≥ +2.0 (spread overvalued)
-
-### Exit Signals
-- **Take Profit**: Z-score returns to ±0.2
-- **Stop Loss**: Z-score reaches ±3.0 or correlation breakdown
-
-## Risk Management
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| Max Risk/Trade | 1% | Capital at risk per position |
-| Max Exposure | 10% | Total portfolio exposure |
-| Max Open Pairs | 3 | Concurrent positions |
-| Max Drawdown | 15% | Halt threshold |
-| Max Daily Loss | 3% | Daily loss limit |
-
-## Default Pairs
-
-| Pair | Rationale |
-|------|-----------|
-| EURUSD/GBPUSD | European majors |
-| AUDUSD/NZDUSD | Oceanic currencies |
-| EURJPY/USDJPY | Yen crosses |
-| EURCHF/USDCHF | Swiss franc pairs |
-
-## Backtest Costs
-
-- **Spread**: 1.5 pips
-- **Slippage**: 0.5 pips
-- **Commission**: $7/lot
-
-## API Reference
-
-### MT5Client
-```python
-from src.data.broker_client import MT5Client, Timeframe
-
-client = MT5Client(config)
-client.connect()
-
-# Get historical data
-candles = client.get_candles("EURUSD", Timeframe.H1, 500)
-
-# Execute order
-result = client.market_order("EURUSD", OrderType.BUY, 0.1)
-```
-
-### PairsTradingSystem
-```python
-from main import PairsTradingSystem
-
-system = PairsTradingSystem()
-
-# Screen pairs
-results = system.screen_pairs(days=180)
-
-# Run backtest
-backtest = system.run_backtest(("EURUSD", "GBPUSD"), days=365)
-```
-
-## Troubleshooting
-
-### MT5 Connection Failed
-- Verify MT5 terminal is running
-- Check login credentials
-- Ensure correct server name
-
-### No Data Received
-- Verify symbol names (check for suffix)
-- Ensure symbol is in Market Watch
-- Check internet connection
-
-### Order Rejected
-- Check account balance
-- Verify symbol trading hours
-- Check deviation settings
-
-## Disclaimer
-
-**This software is for educational purposes only.**
-
-Trading forex involves substantial risk of loss. Past performance is not indicative of future results. Never trade with money you cannot afford to lose.
-
-The authors are not responsible for any financial losses incurred through the use of this software.
+⚠️ **Cointegración débil = relación espuria**
 
 ## License
 
 MIT License
+
+## Disclaimer
+
+Este software es solo para propósitos educativos. El trading de Forex conlleva riesgo significativo de pérdida. Siempre haga paper trading antes de operar con dinero real. Los resultados pasados no garantizan resultados futuros.

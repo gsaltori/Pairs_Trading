@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-01-06T14:49:26.940801",
+  "symbols_analyzed": 15,
+  "pairs_analyzed": 105,
+  "pairs_passed": 0,
+  "avg_correlation": 0.06742846502143392,
+  "cointegration_rate": 0.34285714285714286,
+  "top_pairs": []
+}

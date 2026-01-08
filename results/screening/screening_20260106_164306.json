@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-01-06T16:42:35.172293",
+  "symbols_analyzed": 15,
+  "pairs_analyzed": 105,
+  "pairs_passed": 3,
+  "avg_correlation": 0.07105071070855727,
+  "cointegration_rate": 0.1523809523809524,
+  "top_pairs": [
+    {
+      "pair": [
+        "USDJPY",
+        "AUDJPY"
+      ],
+      "total_score": 68.47337721072593,
+      "price_correlation": 0.8429521212509697,
+      "returns_correlation": 0.5925114963995562,
+      "is_cointegrated": 

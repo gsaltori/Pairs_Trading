@@ -68,7 +68,7 @@ class WalkForwardOptimizer:
     Process:
     1. Divide data into IS (in-sample) and OOS (out-of-sample) periods
     2. Optimize parameters on IS period
-    3. Validate on OOS period
+    3. Validate on OOS period (with warmup data for indicators)
     4. Roll forward and repeat
     5. Calculate efficiency ratio
     """
@@ -83,13 +83,16 @@ class WalkForwardOptimizer:
         self.settings = settings
         self.opt_settings = settings.optimization
         
-        # Parameter search space
+        # Warmup bars for OOS validation (for indicator calculation)
+        self.warmup_bars = 200
+        
+        # Parameter search space (reduced for faster optimization)
         self.param_grid = {
             'entry_zscore': [1.5, 2.0, 2.5],
             'exit_zscore': [0.1, 0.2, 0.3],
             'stop_loss_zscore': [2.5, 3.0, 3.5],
-            'regression_window': [60, 120, 180],
-            'zscore_window': [30, 60, 90],
+            'regression_window': [60, 90, 120],
+            'zscore_window': [30, 45, 60],
             'min_correlation': [0.65, 0.70, 0.75]
         }
     
@@ -120,6 +123,10 @@ class WalkForwardOptimizer:
         oos_bars = self.opt_settings.out_of_sample_bars
         step = oos_bars
         
+        logger.info(f"Total data: {total_bars} bars")
+        logger.info(f"IS period: {is_bars} bars, OOS period: {oos_bars} bars")
+        logger.info(f"Warmup for OOS: {self.warmup_bars} bars")
+        
         # Calculate number of periods
         periods = []
         period_idx = 0
@@ -131,12 +138,19 @@ class WalkForwardOptimizer:
             oos_start_idx = is_end_idx
             oos_end_idx = is_end_idx + oos_bars
             
-            # Extract data slices
+            # Extract data slices for IS
             is_price_a = price_a.iloc[is_start_idx:is_end_idx]
             is_price_b = price_b.iloc[is_start_idx:is_end_idx]
             
-            oos_price_a = price_a.iloc[oos_start_idx:oos_end_idx]
-            oos_price_b = price_b.iloc[oos_start_idx:oos_end_idx]
+            # Extract data for OOS WITH WARMUP (include prior data for indicator calculation)
+            # Warmup starts from is_end_idx - warmup_bars
+            warmup_start = max(0, is_end_idx - self.warmup_bars)
+            oos_price_a_with_warmup = price_a.iloc[warmup_start:oos_end_idx]
+            oos_price_b_with_warmup = price_b.iloc[warmup_start:oos_end_idx]
+            
+            # Track OOS period boundaries for reporting
+            oos_actual_start = common_idx[oos_start_idx]
+            oos_actual_end = common_idx[oos_end_idx - 1]
             
             # Optimize on IS
             logger.info(f"Optimizing period {period_idx + 1}...")
@@ -147,9 +161,13 @@ class WalkForwardOptimizer:
             is_sharpe = is_result.sharpe_ratio if is_result else 0
             is_return = is_result.total_return if is_result else 0
             
-            # Validate on OOS
-            oos_result = self._validate_period(
-                pair, oos_price_a, oos_price_b, best_params
+            # Validate on OOS (with warmup data)
+            oos_result = self._validate_period_with_warmup(
+                pair, 
+                oos_price_a_with_warmup, 
+                oos_price_b_with_warmup, 
+                best_params,
+                warmup_bars=is_end_idx - warmup_start
             )
             
             oos_sharpe = oos_result.sharpe_ratio if oos_result else 0
@@ -160,8 +178,8 @@ class WalkForwardOptimizer:
                 period_index=period_idx,
                 is_start=common_idx[is_start_idx],
                 is_end=common_idx[is_end_idx - 1],
-                oos_start=common_idx[oos_start_idx],
-                oos_end=common_idx[oos_end_idx - 1],
+                oos_start=oos_actual_start,
+                oos_end=oos_actual_end,
                 best_params=best_params,
                 is_sharpe=is_sharpe,
                 oos_sharpe=oos_sharpe,
@@ -169,6 +187,8 @@ class WalkForwardOptimizer:
                 oos_return=oos_return,
                 oos_trades=oos_trades
             ))
+            
+            logger.info(f"  Period {period_idx + 1}: IS Sharpe={is_sharpe:.2f}, OOS Sharpe={oos_sharpe:.2f}, OOS Trades={oos_trades}")
             
             period_idx += 1
             start += step
@@ -244,23 +264,66 @@ class WalkForwardOptimizer:
         
         return best_params, best_result
     
-    def _validate_period(
+    def _validate_period_with_warmup(
         self,
         pair: Tuple[str, str],
         price_a: pd.Series,
         price_b: pd.Series,
-        params: OptimizationParams
+        params: OptimizationParams,
+        warmup_bars: int
     ) -> Optional[BacktestResult]:
         """
         Validate parameters on out-of-sample period.
         
+        Uses warmup data at the beginning for indicator calculation,
+        but only counts trades/performance from after warmup period.
+        
+        Args:
+            pair: Trading pair
+            price_a: Prices for symbol A (includes warmup)
+            price_b: Prices for symbol B (includes warmup)
+            params: Parameters to test
+            warmup_bars: Number of bars used for warmup
+            
         Returns:
-            BacktestResult
+            BacktestResult (for OOS period only)
         """
         test_settings = self._create_test_settings(params)
         
+        # Run backtest on full data (warmup + OOS)
         engine = BacktestEngine(test_settings)
         result = engine.run_backtest(pair, price_a, price_b)
+        
+        if result is None:
+            return None
+        
+        # Filter trades to only those in OOS period
+        if result.trades and warmup_bars > 0:
+            oos_start = price_a.index[warmup_bars] if warmup_bars < len(price_a) else price_a.index[0]
+            
+            oos_trades = [t for t in result.trades if t.entry_time >= oos_start]
+            
+            # Recalculate metrics for OOS trades only
+            if oos_trades:
+                pnls = [t.net_pnl for t in oos_trades]
+                total_pnl = sum(pnls)
+                
+                # Simple recalculation
+                result.total_trades = len(oos_trades)
+                result.winning_trades = len([p for p in pnls if p > 0])
+                result.losing_trades = len([p for p in pnls if p <= 0])
+                result.win_rate = result.winning_trades / result.total_trades if result.total_trades > 0 else 0
+                
+                # Simplified Sharpe estimate
+                if len(pnls) > 1:
+                    avg_pnl = np.mean(pnls)
+                    std_pnl = np.std(pnls)
+                    result.sharpe_ratio = (avg_pnl / std_pnl) * np.sqrt(252) if std_pnl > 0 else 0
+                
+                result.trades = oos_trades
+            else:
+                result.total_trades = 0
+                result.sharpe_ratio = 0
         
         return result
     
@@ -309,6 +372,18 @@ class WalkForwardOptimizer:
             self.param_grid['zscore_window'] = zscore_window
         if min_correlation:
             self.param_grid['min_correlation'] = min_correlation
+    
+    def set_fast_mode(self):
+        """Use reduced parameter grid for faster optimization."""
+        self.param_grid = {
+            'entry_zscore': [2.0, 2.5],
+            'exit_zscore': [0.2],
+            'stop_loss_zscore': [3.0],
+            'regression_window': [60, 120],
+            'zscore_window': [30, 60],
+            'min_correlation': [0.70]
+        }
+        logger.info("Fast mode enabled: reduced parameter grid")
     
     def save_results(self, result: WalkForwardResult, filepath: str):
         """Save optimization results to JSON."""

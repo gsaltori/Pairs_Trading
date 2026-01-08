@@ -1,0 +1,362 @@
+{
+  "timestamp": "2026-01-08T15:53:36.446741",
+  "timeframe": "D1",
+  "is_active": false,
+  "state_summary": {
+    "active": 0,
+    "dormant": 0,
+    "invalidated": 24,
+    "warming_up": 0
+  },
+  "signals": [],
+  "pairs": [
+    {
+      "pair": [
+        "EURUSD",
+        "GBPUSD"
+      ],
+      "state": "invalidated",
+      "zscore": -1.7018604299260578,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 48 bars (out of range)",
+        "Hurst: 0.982 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "USDCHF"
+      ],
+      "state": "invalidated",
+      "zscore": 0.3674200059971241,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: low)",
+        "Hurst: 0.976 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "EURJPY"
+      ],
+      "state": "invalidated",
+      "zscore": -0.8510818267694746,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 57 bars (out of range)",
+        "Hurst: 1.000 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "EURGBP"
+      ],
+      "state": "invalidated",
+      "zscore": 0.904856435414862,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 64 bars (out of range)",
+        "Hurst: 0.983 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "GBPJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 0.19324231781924966,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 46 bars (out of range)",
+        "Hurst: 1.000 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "EURGBP"
+      ],
+      "state": "invalidated",
+      "zscore": 0.9408330586868963,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 63 bars (out of range)",
+        "Hurst: 0.985 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "USDCHF",
+        "EURCHF"
+      ],
+      "state": "invalidated",
+      "zscore": -0.28385028462103146,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 55 bars (out of range)",
+        "Hurst: 0.968 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "NZDUSD"
+      ],
+      "state": "invalidated",
+      "zscore": 1.946996795215384,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 42 bars (out of range)",
+        "Hurst: 0.942 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "USDCAD"
+      ],
+      "state": "invalidated",
+      "zscore": 2.3620159078271956,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Hurst: 0.960 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 1.3208361657470196,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Hurst: 0.954 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDNZD"
+      ],
+      "state": "invalidated",
+      "zscore": 1.4419447169284243,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Hurst: 0.933 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "NZDUSD",
+        "NZDJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 0.008831361529533708,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 43 bars (out of range)",
+        "Hurst: 1.000 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "GBPJPY"
+      ],
+      "state": "invalidated",
+      "zscore": -1.4960602659964812,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 59 bars (out of range)",
+        "Hurst: 0.980 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "CHFJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 0.6642570709300716,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: low)",
+        "Hurst: 0.949 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDJPY",
+        "NZDJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 2.0502403311494852,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 192 bars (out of range)",
+        "Hurst: 0.952 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDJPY",
+        "CADJPY"
+      ],
+      "state": "invalidated",
+      "zscore": 2.5899632050994144,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: low)",
+        "Spread not stationary",
+        "Hurst: 0.971 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURGBP",
+        "EURCHF"
+      ],
+      "state": "invalidated",
+      "zscore": -1.7169100713008298,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 49 bars (out of range)",
+        "Hurst: 0.990 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURAUD",
+        "EURNZD"
+      ],
+      "state": "invalidated",
+      "zscore": -2.1878658503591133,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 42 bars (out of range)",
+        "Hurst: 0.947 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURAUD",
+        "GBPAUD"
+      ],
+      "state": "invalidated",
+      "zscore": -1.8734073284199342,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 51 bars (out of range)",
+        "Hurst: 0.985 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURNZD",
+        "GBPNZD"
+      ],
+      "state": "invalidated",
+      "zscore": -1.6708561007299227,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: low)",
+        "Spread not stationary",
+        "Half-life: 52 bars (out of range)",
+        "Hurst: 0.988 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "EURCAD",
+        "GBPCAD"
+      ],
+      "state": "invalidated",
+      "zscore": -1.7246470104376206,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 54 bars (out of range)",
+        "Hurst: 0.990 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "GBPAUD",
+        "GBPNZD"
+      ],
+      "state": "invalidated",
+      "zscore": -1.8081677953075586,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Half-life: 47 bars (out of range)",
+        "Hurst: 0.942 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDCAD",
+        "NZDCAD"
+      ],
+      "state": "invalidated",
+      "zscore": 2.7051644946053264,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: low)",
+        "Spread not stationary",
+        "Half-life: 47 bars (out of range)",
+        "Hurst: 0.967 (not mean-reverting)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDCHF",
+        "NZDCHF"
+      ],
+      "state": "invalidated",
+      "zscore": 2.1466172775064347,
+      "signal": null,
+      "reasons": [
+        "Cointegration unstable (confidence: none)",
+        "Spread not stationary",
+        "Hurst: 0.938 (not mean-reverting)"
+      ]
+    }
+  ]
+}

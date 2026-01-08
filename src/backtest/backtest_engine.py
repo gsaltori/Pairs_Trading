@@ -144,8 +144,14 @@ class BacktestEngine:
         price_a = price_a.loc[common_idx]
         price_b = price_b.loc[common_idx]
         
-        if len(price_a) < self.bt_settings.min_bars_required:
-            logger.warning(f"Insufficient data: {len(price_a)} bars")
+        # Dynamic min_bars based on settings
+        min_required = max(
+            self.spread_settings.regression_window + self.spread_settings.zscore_window + 50,
+            self.bt_settings.min_bars_required
+        )
+        
+        if len(price_a) < min_required:
+            logger.warning(f"Insufficient data: {len(price_a)} bars (need {min_required})")
             return None
         
         # Build spread with z-score
@@ -161,18 +167,26 @@ class BacktestEngine:
         
         position = None  # Current position
         
-        # Iterate through data
-        start_idx = max(
-            self.spread_settings.regression_window + self.spread_settings.zscore_window,
-            self.spread_settings.correlation_window
-        )
+        # Calculate start index (ensure we have valid z-scores)
+        start_idx = self.spread_settings.regression_window + self.spread_settings.zscore_window
         
+        # Find first valid z-score
+        for i in range(start_idx, len(common_idx)):
+            if not pd.isna(spread_data['zscore'].iloc[i]):
+                start_idx = i
+                break
+        
+        if start_idx >= len(common_idx) - 10:
+            logger.warning("Not enough valid data points after warmup")
+            return None
+        
+        # Iterate through data
         for i in range(start_idx, len(common_idx)):
             idx = common_idx[i]
             
             zscore = spread_data['zscore'].iloc[i]
             hedge_ratio = spread_data['hedge_ratio'].iloc[i]
-            correlation = rolling_corr.iloc[i] if i < len(rolling_corr) else 0.7
+            correlation = rolling_corr.iloc[i] if i < len(rolling_corr) and not pd.isna(rolling_corr.iloc[i]) else 0.7
             
             current_price_a = price_a.iloc[i]
             current_price_b = price_b.iloc[i]
@@ -267,15 +281,19 @@ class BacktestEngine:
                 exit_idx=common_idx[-1],
                 exit_price_a=price_a.iloc[-1],
                 exit_price_b=price_b.iloc[-1],
-                exit_zscore=spread_data['zscore'].iloc[-1],
+                exit_zscore=spread_data['zscore'].iloc[-1] if not pd.isna(spread_data['zscore'].iloc[-1]) else 0,
                 exit_reason="end_of_data"
             )
             trades.append(trade)
             capital += trade.net_pnl
-            equity_curve[-1] = capital
+            if equity_curve:
+                equity_curve[-1] = capital
         
         # Create equity series
-        equity_series = pd.Series(equity_curve, index=common_idx[start_idx:])
+        if len(equity_curve) > 0:
+            equity_series = pd.Series(equity_curve, index=common_idx[start_idx:start_idx + len(equity_curve)])
+        else:
+            equity_series = pd.Series([initial_capital])
         
         # Calculate metrics
         result = self._calculate_metrics(
@@ -353,7 +371,7 @@ class BacktestEngine:
         base_size = risk_per_leg / 300
         
         size_a = round(base_size, 2)
-        size_b = round(base_size * hedge_ratio, 2)
+        size_b = round(base_size * abs(hedge_ratio), 2)
         
         return max(0.01, size_a), max(0.01, size_b)
     
@@ -373,29 +391,41 @@ class BacktestEngine:
         
         # Annualized return
         days = (end_date - start_date).days
-        years = days / 365.25
+        years = days / 365.25 if days > 0 else 1
         annual_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
         
         # Returns series
         returns = equity_curve.pct_change().dropna()
         
         # Volatility
-        volatility = returns.std() * np.sqrt(252 * 24) if len(returns) > 0 else 0  # Hourly data
+        if len(returns) > 0:
+            volatility = returns.std() * np.sqrt(252 * 24)  # Hourly data
+        else:
+            volatility = 0
         
         # Sharpe Ratio
         risk_free_rate = 0.02
-        excess_returns = returns.mean() * 252 * 24 - risk_free_rate
-        sharpe_ratio = excess_returns / volatility if volatility > 0 else 0
+        if volatility > 0:
+            excess_returns = returns.mean() * 252 * 24 - risk_free_rate
+            sharpe_ratio = excess_returns / volatility
+        else:
+            sharpe_ratio = 0
         
         # Sortino Ratio
         downside_returns = returns[returns < 0]
-        downside_std = downside_returns.std() * np.sqrt(252 * 24) if len(downside_returns) > 0 else 0
-        sortino_ratio = excess_returns / downside_std if downside_std > 0 else 0
+        if len(downside_returns) > 0:
+            downside_std = downside_returns.std() * np.sqrt(252 * 24)
+            sortino_ratio = (returns.mean() * 252 * 24 - risk_free_rate) / downside_std if downside_std > 0 else 0
+        else:
+            sortino_ratio = 0
         
         # Max Drawdown
-        cummax = equity_curve.cummax()
-        drawdown = (equity_curve - cummax) / cummax
-        max_drawdown = drawdown.min() if len(drawdown) > 0 else 0
+        if len(equity_curve) > 0:
+            cummax = equity_curve.cummax()
+            drawdown = (equity_curve - cummax) / cummax
+            max_drawdown = drawdown.min()
+        else:
+            max_drawdown = 0
         
         # Calmar Ratio
         calmar_ratio = annual_return / abs(max_drawdown) if max_drawdown != 0 else 0
@@ -419,8 +449,8 @@ class BacktestEngine:
             avg_trade = np.mean(pnls)
             avg_win = np.mean(winning) if winning else 0
             avg_loss = np.mean(losing) if losing else 0
-            max_win = max(pnls)
-            max_loss = min(pnls)
+            max_win = max(pnls) if pnls else 0
+            max_loss = min(pnls) if pnls else 0
             
             # Holding period
             holding_periods = [(t.exit_time - t.entry_time).total_seconds() / 3600 for t in trades]

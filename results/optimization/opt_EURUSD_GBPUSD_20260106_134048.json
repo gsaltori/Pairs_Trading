@@ -1,0 +1,721 @@
+{
+  "pair": [
+    "EURUSD",
+    "GBPUSD"
+  ],
+  "efficiency_ratio": -7.706407201340993,
+  "is_sharpe": 1.5252273962720506,
+  "oos_sharpe": -11.754023390313504,
+  "total_trades": 336,
+  "robustness_score": 0.2,
+  "best_params": {
+    "entry_zscore": 2.5,
+    "exit_zscore": 0.3,
+    "stop_loss_zscore": 3.5,
+    "regression_window": 120,
+    "zscore_window": 60,
+    "min_correlation": 0.65
+  },
+  "periods": [
+    {
+      "period": 0,
+      "is_start": "2023-03-13T15:00:00",
+      "is_end": "2023-04-11T14:00:00",
+      "oos_start": "2023-04-11T15:00:00",
+      "oos_end": "2023-04-20T14:00:00",
+      "is_sharpe": 4.16296620423419,
+      "oos_sharpe": 5.085367113710424,
+      "oos_trades": 7,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 1,
+      "is_start": "2023-03-22T15:00:00",
+      "is_end": "2023-04-20T14:00:00",
+      "oos_start": "2023-04-20T15:00:00",
+      "oos_end": "2023-05-01T14:00:00",
+      "is_sharpe": 5.204679254633261,
+      "oos_sharpe": -3.0698351874124663,
+      "oos_trades": 6,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 2,
+      "is_start": "2023-03-31T15:00:00",
+      "is_end": "2023-05-01T14:00:00",
+      "oos_start": "2023-05-01T15:00:00",
+      "oos_end": "2023-05-10T14:00:00",
+      "is_sharpe": 3.6607659680790117,
+      "oos_sharpe": -6.055579829219101,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 3,
+      "is_start": "2023-04-11T15:00:00",
+      "is_end": "2023-05-10T14:00:00",
+      "oos_start": "2023-05-10T15:00:00",
+      "oos_end": "2023-05-19T14:00:00",
+      "is_sharpe": 3.35428115534712,
+      "oos_sharpe": -19.289923260687925,
+      "oos_trades": 6,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 4,
+      "is_start": "2023-04-20T15:00:00",
+      "is_end": "2023-05-19T14:00:00",
+      "oos_start": "2023-05-19T15:00:00",
+      "oos_end": "2023-05-30T14:00:00",
+      "is_sharpe": 6.264314429780781,
+      "oos_sharpe": 7.905207662022342,
+      "oos_trades": 5,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 5,
+      "is_start": "2023-05-01T15:00:00",
+      "is_end": "2023-05-30T14:00:00",
+      "oos_start": "2023-05-30T15:00:00",
+      "oos_end": "2023-06-08T14:00:00",
+      "is_sharpe": 6.203377570737644,
+      "oos_sharpe": -6.651019532685938,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 6,
+      "is_start": "2023-05-10T15:00:00",
+      "is_end": "2023-06-08T14:00:00",
+      "oos_start": "2023-06-08T15:00:00",
+      "oos_end": "2023-06-19T14:00:00",
+      "is_sharpe": 2.9510745022579328,
+      "oos_sharpe": -31.26471215681956,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 7,
+      "is_start": "2023-05-19T15:00:00",
+      "is_end": "2023-06-19T14:00:00",
+      "oos_start": "2023-06-19T15:00:00",
+      "oos_end": "2023-06-28T14:00:00",
+      "is_sharpe": -2.6343505004748455,
+      "oos_sharpe": -14.52132274281362,
+      "oos_trades": 4,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 8,
+      "is_start": "2023-05-30T15:00:00",
+      "is_end": "2023-06-28T14:00:00",
+      "oos_start": "2023-06-28T15:00:00",
+      "oos_end": "2023-07-07T14:00:00",
+      "is_sharpe": -2.568162059219243,
+      "oos_sharpe": -1.890402872716083,
+      "oos_trades": 9,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 9,
+      "is_start": "2023-06-08T15:00:00",
+      "is_end": "2023-07-07T14:00:00",
+      "oos_start": "2023-07-07T15:00:00",
+      "oos_end": "2023-07-18T14:00:00",
+      "is_sharpe": 5.606950614230356,
+      "oos_sharpe": -7.123394741043973,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 10,
+      "is_start": "2023-06-19T15:00:00",
+      "is_end": "2023-07-18T14:00:00",
+      "oos_start": "2023-07-18T15:00:00",
+      "oos_end": "2023-07-27T14:00:00",
+      "is_sharpe": 6.721531417145645,
+      "oos_sharpe": -14.72967656871823,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 11,
+      "is_start": "2023-06-28T15:00:00",
+      "is_end": "2023-07-27T14:00:00",
+      "oos_start": "2023-07-27T15:00:00",
+      "oos_end": "2023-08-07T14:00:00",
+      "is_sharpe": 4.050909033530777,
+      "oos_sharpe": -19.264105078247514,
+      "oos_trades": 4,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 12,
+      "is_start": "2023-07-07T15:00:00",
+      "is_end": "2023-08-07T14:00:00",
+      "oos_start": "2023-08-07T15:00:00",
+      "oos_end": "2023-08-16T14:00:00",
+      "is_sharpe": 4.976831452802607,
+      "oos_sharpe": -2.658432218467438,
+      "oos_trades": 26,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 13,
+      "is_start": "2023-07-18T15:00:00",
+      "is_end": "2023-08-16T14:00:00",
+      "oos_start": "2023-08-16T15:00:00",
+      "oos_end": "2023-08-25T14:00:00",
+      "is_sharpe": 2.8415313782208225,
+      "oos_sharpe": -4.089444108335726,
+      "oos_trades": 7,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 14,
+      "is_start": "2023-07-27T15:00:00",
+      "is_end": "2023-08-25T14:00:00",
+      "oos_start": "2023-08-25T15:00:00",
+      "oos_end": "2023-09-05T14:00:00",
+      "is_sharpe": 1.3386410392693069,
+      "oos_sharpe": -11.07825903375429,
+      "oos_trades": 6,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 15,
+      "is_start": "2023-08-07T15:00:00",
+      "is_end": "2023-09-05T14:00:00",
+      "oos_start": "2023-09-05T15:00:00",
+      "oos_end": "2023-09-14T14:00:00",
+      "is_sharpe": -0.07578262964800364,
+      "oos_sharpe": -8.525002556666488,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 16,
+      "is_start": "2023-08-16T15:00:00",
+      "is_end": "2023-09-14T14:00:00",
+      "oos_start": "2023-09-14T15:00:00",
+      "oos_end": "2023-09-25T14:00:00",
+      "is_sharpe": 2.494044050751252,
+      "oos_sharpe": 2.050552825150296,
+      "oos_trades": 10,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 17,
+      "is_start": "2023-08-25T15:00:00",
+      "is_end": "2023-09-25T14:00:00",
+      "oos_start": "2023-09-25T15:00:00",
+      "oos_end": "2023-10-04T14:00:00",
+      "is_sharpe": 4.230428606613443,
+      "oos_sharpe": 0,
+      "oos_trades": 0,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 18,
+      "is_start": "2023-09-05T15:00:00",
+      "is_end": "2023-10-04T14:00:00",
+      "oos_start": "2023-10-04T15:00:00",
+      "oos_end": "2023-10-13T14:00:00",
+      "is_sharpe": 4.654583601678821,
+      "oos_sharpe": -24.265265702725745,
+      "oos_trades": 9,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 19,
+      "is_start": "2023-09-14T15:00:00",
+      "is_end": "2023-10-13T14:00:00",
+      "oos_start": "2023-10-13T15:00:00",
+      "oos_end": "2023-10-24T14:00:00",
+      "is_sharpe": -2.231864704492166,
+      "oos_sharpe": -13.385007893235302,
+      "oos_trades": 11,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 20,
+      "is_start": "2023-09-25T15:00:00",
+      "is_end": "2023-10-24T14:00:00",
+      "oos_start": "2023-10-24T15:00:00",
+      "oos_end": "2023-11-02T14:00:00",
+      "is_sharpe": -8.645116643695928,
+      "oos_sharpe": -29.549726270501978,
+      "oos_trades": 9,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 21,
+      "is_start": "2023-10-04T15:00:00",
+      "is_end": "2023-11-02T14:00:00",
+      "oos_start": "2023-11-02T15:00:00",
+      "oos_end": "2023-11-13T14:00:00",
+      "is_sharpe": -9.504420609732966,
+      "oos_sharpe": -12.04156827995267,
+      "oos_trades": 22,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 22,
+      "is_start": "2023-10-13T15:00:00",
+      "is_end": "2023-11-13T14:00:00",
+      "oos_start": "2023-11-13T15:00:00",
+      "oos_end": "2023-11-22T14:00:00",
+      "is_sharpe": -6.48110440532674,
+      "oos_sharpe": 2.391025730288076,
+      "oos_trades": 10,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 23,
+      "is_start": "2023-10-24T15:00:00",
+      "is_end": "2023-11-22T14:00:00",
+      "oos_start": "2023-11-22T15:00:00",
+      "oos_end": "2023-12-01T14:00:00",
+      "is_sharpe": 2.148026552827939,
+      "oos_sharpe": -19.473759009455385,
+      "oos_trades": 4,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 24,
+      "is_start": "2023-11-02T15:00:00",
+      "is_end": "2023-12-01T14:00:00",
+      "oos_start": "2023-12-01T15:00:00",
+      "oos_end": "2023-12-12T14:00:00",
+      "is_sharpe": 4.592504340871788,
+      "oos_sharpe": -20.152295699073502,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 25,
+      "is_start": "2023-11-13T15:00:00",
+      "is_end": "2023-12-12T14:00:00",
+      "oos_start": "2023-12-12T15:00:00",
+      "oos_end": "2023-12-21T14:00:00",
+      "is_sharpe": -2.50564050528742,
+      "oos_sharpe": -47.81157305068822,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 26,
+      "is_start": "2023-11-22T15:00:00",
+      "is_end": "2023-12-21T14:00:00",
+      "oos_start": "2023-12-21T15:00:00",
+      "oos_end": "2024-01-03T14:00:00",
+      "is_sharpe": -0.5928437683325424,
+      "oos_sharpe": -4.3336576113583885,
+      "oos_trades": 7,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 27,
+      "is_start": "2023-12-01T15:00:00",
+      "is_end": "2024-01-03T14:00:00",
+      "oos_start": "2024-01-03T15:00:00",
+      "oos_end": "2024-01-12T14:00:00",
+      "is_sharpe": 3.650020342586776,
+      "oos_sharpe": -21.911031047194598,
+      "oos_trades": 13,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 28,
+      "is_start": "2023-12-12T15:00:00",
+      "is_end": "2024-01-12T14:00:00",
+      "oos_start": "2024-01-12T15:00:00",
+      "oos_end": "2024-01-23T14:00:00",
+      "is_sharpe": 3.7169539723069898,
+      "oos_sharpe": -9.32302850085763,
+      "oos_trades": 9,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 29,
+      "is_start": "2023-12-21T15:00:00",
+      "is_end": "2024-01-23T14:00:00",
+      "oos_start": "2024-01-23T15:00:00",
+      "oos_end": "2024-02-01T14:00:00",
+      "is_sharpe": 2.0191724167979666,
+      "oos_sharpe": 7.555816995060717,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 30,
+      "is_start": "2024-01-03T15:00:00",
+      "is_end": "2024-02-01T14:00:00",
+      "oos_start": "2024-02-01T15:00:00",
+      "oos_end": "2024-02-12T14:00:00",
+      "is_sharpe": 5.57416030349957,
+      "oos_sharpe": -29.068033390790927,
+      "oos_trades": 14,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 31,
+      "is_start": "2024-01-12T15:00:00",
+      "is_end": "2024-02-12T14:00:00",
+      "oos_start": "2024-02-12T15:00:00",
+      "oos_end": "2024-02-21T14:00:00",
+      "is_sharpe": -0.8108064829783332,
+      "oos_sharpe": -3.6052885159489123,
+      "oos_trades": 1,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 32,
+      "is_start": "2024-01-23T15:00:00",
+      "is_end": "2024-02-21T14:00:00",
+      "oos_start": "2024-02-21T15:00:00",
+      "oos_end": "2024-03-01T14:00:00",
+      "is_sharpe": 4.008111966851853,
+      "oos_sharpe": -27.124267160748456,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 33,
+      "is_start": "2024-02-01T15:00:00",
+      "is_end": "2024-03-01T14:00:00",
+      "oos_start": "2024-03-01T15:00:00",
+      "oos_end": "2024-03-12T14:00:00",
+      "is_sharpe": 1.2301499026196225,
+      "oos_sharpe": -41.84747268971485,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 34,
+      "is_start": "2024-02-12T15:00:00",
+      "is_end": "2024-03-12T14:00:00",
+      "oos_start": "2024-03-12T15:00:00",
+      "oos_end": "2024-03-21T14:00:00",
+      "is_sharpe": -5.875233024028356,
+      "oos_sharpe": 4.950680628849566,
+      "oos_trades": 1,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 35,
+      "is_start": "2024-02-21T15:00:00",
+      "is_end": "2024-03-21T14:00:00",
+      "oos_start": "2024-03-21T15:00:00",
+      "oos_end": "2024-04-01T14:00:00",
+      "is_sharpe": 3.397767631402118,
+      "oos_sharpe": -23.881615285409822,
+      "oos_trades": 46,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 36,
+      "is_start": "2024-03-01T15:00:00",
+      "is_end": "2024-04-01T14:00:00",
+      "oos_start": "2024-04-01T15:00:00",
+      "oos_end": "2024-04-10T14:00:00",
+      "is_sharpe": -2.436917039650035,
+      "oos_sharpe": 0.3528253860367236,
+      "oos_trades": 5,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 37,
+      "is_start": "2024-03-12T15:00:00",
+      "is_end": "2024-04-10T14:00:00",
+      "oos_start": "2024-04-10T15:00:00",
+      "oos_end": "2024-04-19T14:00:00",
+      "is_sharpe": -3.3488577127569936,
+      "oos_sharpe": -10.764634349487544,
+      "oos_trades": 10,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 38,
+      "is_start": "2024-03-21T15:00:00",
+      "is_end": "2024-04-19T14:00:00",
+      "oos_start": "2024-04-19T15:00:00",
+      "oos_end": "2024-04-30T14:00:00",
+      "is_sharpe": -0.38915306597655885,
+      "oos_sharpe": -24.853279141829187,
+      "oos_trades": 6,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 39,
+      "is_start": "2024-04-01T15:00:00",
+      "is_end": "2024-04-30T14:00:00",
+      "oos_start": "2024-04-30T15:00:00",
+      "oos_end": "2024-05-09T14:00:00",
+      "is_sharpe": -1.7839285959959026,
+      "oos_sharpe": -25.33172438043436,
+      "oos_trades": 9,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 40,
+      "is_start": "2024-04-10T15:00:00",
+      "is_end": "2024-05-09T14:00:00",
+      "oos_start": "2024-05-09T15:00:00",
+      "oos_end": "2024-05-20T14:00:00",
+      "is_sharpe": 2.5909988681902787,
+      "oos_sharpe": 19.649716167350437,
+      "oos_trades": 2,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 41,
+      "is_start": "2024-04-19T15:00:00",
+      "is_end": "2024-05-20T14:00:00",
+      "oos_start": "2024-05-20T15:00:00",
+      "oos_end": "2024-05-29T14:00:00",
+      "is_sharpe": 7.282702092116834,
+      "oos_sharpe": 6.007258416182018,
+      "oos_trades": 1,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 42,
+      "is_start": "2024-04-30T15:00:00",
+      "is_end": "2024-05-29T14:00:00",
+      "oos_start": "2024-05-29T15:00:00",
+      "oos_end": "2024-06-07T14:00:00",
+      "is_sharpe": 7.253429378392988,
+      "oos_sharpe": -35.19276810754421,
+      "oos_trades": 4,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 43,
+      "is_start": "2024-05-09T15:00:00",
+      "is_end": "2024-06-07T14:00:00",
+      "oos_start": "2024-06-07T15:00:00",
+      "oos_end": "2024-06-18T14:00:00",
+      "is_sharpe": 2.4443904674180468,
+      "oos_sharpe": -21.365509595594713,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 2.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 44,
+      "is_start": "2024-05-20T15:00:00",
+      "is_end": "2024-06-18T14:00:00",
+      "oos_start": "2024-06-18T15:00:00",
+      "oos_end": "2024-06-27T14:00:00",
+      "is_sharpe": -2.317787614793912,
+      "oos_sharpe": -9.111414812091688,
+      "oos_trades": 5,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.1
+      }
+    },
+    {
+      "period": 45,
+      "is_start": "2024-05-29T15:00:00",
+      "is_end": "2024-06-27T14:00:00",
+      "oos_start": "2024-06-27T15:00:00",
+      "oos_end": "2024-07-08T14:00:00",
+      "is_sharpe": -4.460092630268752,
+      "oos_sharpe": -2.5821166185689077,
+      "oos_trades": 4,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 46,
+      "is_start": "2024-06-07T15:00:00",
+      "is_end": "2024-07-08T14:00:00",
+      "oos_start": "2024-07-08T15:00:00",
+      "oos_end": "2024-07-17T14:00:00",
+      "is_sharpe": 1.284159972049258,
+      "oos_sharpe": -23.70068594549527,
+      "oos_trades": 10,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 47,
+      "is_start": "2024-06-18T15:00:00",
+      "is_end": "2024-07-17T14:00:00",
+      "oos_start": "2024-07-17T15:00:00",
+      "oos_end": "2024-07-26T14:00:00",
+      "is_sharpe": 0.3044724101364988,
+      "oos_sharpe": 0,
+      "oos_trades": 0,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.2
+      }
+    },
+    {
+      "period": 48,
+      "is_start": "2024-06-27T15:00:00",
+      "is_end": "2024-07-26T14:00:00",
+      "oos_start": "2024-07-26T15:00:00",
+      "oos_end": "2024-08-06T14:00:00",
+      "is_sharpe": 4.688753834990713,
+      "oos_sharpe": -15.783974521202662,
+      "oos_trades": 3,
+      "params": {
+        "entry_zscore": 1.5,
+        "exit_zscore": 0.3
+      }
+    },
+    {
+      "period": 49,
+      "is_start": "2024-07-08T15:00:00",
+      "is_end": "2024-08-06T14:00:00",
+      "oos_start": "2024-08-06T15:00:00",
+      "oos_end": "2024-08-15T14:00:00",
+      "is_sharpe": 8.020747073889002,
+      "oos_sharpe": 3.021187027167618,
+      "oos_trades": 1,
+      "params": {
+        "entry_zscore": 2.0,
+        "exit_zscore": 0.2
+      }
+    }
+  ]
+}

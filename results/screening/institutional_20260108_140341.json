@@ -1,0 +1,425 @@
+{
+  "timestamp": "2026-01-08T14:03:15.947741",
+  "timeframe": "H1",
+  "symbols_analyzed": 15,
+  "pairs_analyzed": 105,
+  "pipeline_funnel": {
+    "passed_correlation": 14,
+    "passed_cointegration": 29,
+    "passed_stationarity": 39,
+    "passed_half_life": 0,
+    "final_candidates": 2
+  },
+  "summary": {
+    "avg_correlation": 0.409865221678311,
+    "avg_half_life": 571.4853246675453,
+    "cointegration_rate": 0.2761904761904762
+  },
+  "selected_pairs": [
+    {
+      "pair": [
+        "USDJPY",
+        "AUDJPY"
+      ],
+      "overall_score": 70.88274842228826,
+      "is_tradeable": true,
+      "correlation": {
+        "pearson": 0.8429521212509697,
+        "spearman": 0.8011247661008092,
+        "stability": 0.03485232896853341
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.0856680561388593,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.017367165782728785,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 591.5883200151636,
+        "half_life_days": 24.64951333396515,
+        "hurst_exponent": 0.9936388911120967
+      },
+      "spread": {
+        "hedge_ratio": 1.304958348492493,
+        "hedge_ratio_std": 0.7911690471595735,
+        "current_zscore": -1.4081530234108102
+      },
+      "warnings": [
+        "Half-life long: 592 bars (24.6 days)",
+        "Hurst indicates trending: 0.994"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "EURAUD"
+      ],
+      "overall_score": 64.05505865630599,
+      "is_tradeable": true,
+      "correlation": {
+        "pearson": 0.7333854706041413,
+        "spearman": 0.5150332277370865,
+        "stability": 0.24324737801066265
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.027405666639282813,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.0065679000751800234,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 476.67430622965577,
+        "half_life_days": 19.861429426235656,
+        "hurst_exponent": 0.9956725674160928
+      },
+      "spread": {
+        "hedge_ratio": 0.4775489339072232,
+        "hedge_ratio_std": 0.5083225417781764,
+        "current_zscore": 0.9564717435406761
+      },
+      "warnings": [
+        "Half-life long: 477 bars (19.9 days)",
+        "Hurst indicates trending: 0.996"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "EURGBP"
+      ],
+      "overall_score": 65.08155594497985,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.2576304646368884,
+        "spearman": 0.2158001263626266,
+        "stability": 0.30635507829043995
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.029665440673745058,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.007205724384695372,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 477.4613980489805,
+        "half_life_days": 19.894224918707522,
+        "hurst_exponent": 0.993305784442869
+      },
+      "spread": {
+        "hedge_ratio": 0.2734033889288048,
+        "hedge_ratio_std": 1.0300435889580413,
+        "current_zscore": 1.4119358631425036
+      },
+      "warnings": [
+        "Half-life long: 477 bars (19.9 days)",
+        "Hurst indicates trending: 0.993"
+      ],
+      "rejection_reasons": [
+        "Low correlation: 0.258"
+      ]
+    },
+    {
+      "pair": [
+        "GBPJPY",
+        "AUDNZD"
+      ],
+      "overall_score": 62.17702626702872,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.6577541181616987,
+        "spearman": 0.6667845116628257,
+        "stability": 0.41848483582969886
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.07627695371736005,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": false
+      },
+      "stationarity": {
+        "adf_pvalue": 0.02114046495556534,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 743.031767743405,
+        "half_life_days": 30.95965698930854,
+        "hurst_exponent": 1.0
+      },
+      "spread": {
+        "hedge_ratio": 313.1208178048423,
+        "hedge_ratio_std": 226.18295173289772,
+        "current_zscore": -2.1215432731333537
+      },
+      "warnings": [
+        "Hurst indicates trending: 1.000"
+      ],
+      "rejection_reasons": [
+        "Low correlation: 0.658",
+        "Half-life too long: 743 bars (31.0 days)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "EURCHF"
+      ],
+      "overall_score": 61.56214421504723,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.2805160942727215,
+        "spearman": 0.2596864627773744,
+        "stability": 0.2162643094472475
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.08584788220623435,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.014776591911017526,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 529.4411445190997,
+        "half_life_days": 22.06004768829582,
+        "hurst_exponent": 0.9926037229469071
+      },
+      "spread": {
+        "hedge_ratio": 0.2408820318134044,
+        "hedge_ratio_std": 0.8578668022977948,
+        "current_zscore": 1.3742104466814467
+      },
+      "warnings": [
+        "Half-life long: 529 bars (22.1 days)",
+        "Hurst indicates trending: 0.993"
+      ],
+      "rejection_reasons": [
+        "Low correlation: 0.281"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDJPY"
+      ],
+      "overall_score": 61.12145708814246,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.2385281171882335,
+        "spearman": 0.24601550892283688,
+        "stability": 0.265911836462855
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.07939571460431571,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.015255828269043828,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 577.3531354452022,
+        "half_life_days": 24.05638064355009,
+        "hurst_exponent": 0.9934067500097667
+      },
+      "spread": {
+        "hedge_ratio": 0.0009073434343643376,
+        "hedge_ratio_std": 0.003514401769550635,
+        "current_zscore": 1.398010857435238
+      },
+      "warnings": [
+        "Half-life long: 577 bars (24.1 days)",
+        "Hurst indicates trending: 0.993"
+      ],
+      "rejection_reasons": [
+        "Low correlation: 0.239"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "GBPJPY"
+      ],
+      "overall_score": 58.79054703173378,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": -0.13150259246805143,
+        "spearman": -0.08173396112201413,
+        "stability": 0.13237476832658412
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.0911240006503915,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.014866935007019482,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 533.841476719586,
+        "half_life_days": 22.243394863316084,
+        "hurst_exponent": 0.9935346175999119
+      },
+      "spread": {
+        "hedge_ratio": -0.00020211022146924586,
+        "hedge_ratio_std": 0.002405501935012102,
+        "current_zscore": 1.4940493198171947
+      },
+      "warnings": [
+        "Half-life long: 534 bars (22.2 days)",
+        "Hurst indicates trending: 0.994"
+      ],
+      "rejection_reasons": [
+        "Low correlation: -0.132"
+      ]
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "EURAUD"
+      ],
+      "overall_score": 58.69439949622898,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.7893588508967949,
+        "spearman": 0.5285822734699775,
+        "stability": 0.14066221218678454
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.14166643319680972,
+        "eg_is_cointegrated": false,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.03287071329932965,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 621.9709617535482,
+        "half_life_days": 25.915456739731173,
+        "hurst_exponent": 0.9941553621412271
+      },
+      "spread": {
+        "hedge_ratio": 0.5043913693564126,
+        "hedge_ratio_std": 0.42877576337238454,
+        "current_zscore": 1.177415662801559
+      },
+      "warnings": [
+        "Hurst indicates trending: 0.994"
+      ],
+      "rejection_reasons": [
+        "Half-life too long: 622 bars (25.9 days)"
+      ]
+    },
+    {
+      "pair": [
+        "NZDUSD",
+        "EURCHF"
+      ],
+      "overall_score": 56.62416821418277,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": 0.4822385544220398,
+        "spearman": 0.48593584024449804,
+        "stability": 0.24050001189234593
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.09166990765480898,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": true
+      },
+      "stationarity": {
+        "adf_pvalue": 0.027807090208880197,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 620.3944460101014,
+        "half_life_days": 25.849768583754226,
+        "hurst_exponent": 0.9972871864278284
+      },
+      "spread": {
+        "hedge_ratio": 0.49948834667683845,
+        "hedge_ratio_std": 0.8500994325983253,
+        "current_zscore": -0.12200100486957732
+      },
+      "warnings": [
+        "Hurst indicates trending: 0.997"
+      ],
+      "rejection_reasons": [
+        "Low correlation: 0.482",
+        "Half-life too long: 620 bars (25.8 days)"
+      ]
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "EURJPY"
+      ],
+      "overall_score": 53.832293715129914,
+      "is_tradeable": false,
+      "correlation": {
+        "pearson": -0.05220898218232627,
+        "spearman": -0.07888753969427222,
+        "stability": 0.12927395485065551
+      },
+      "cointegration": {
+        "engle_granger_pvalue": 0.08910158807532004,
+        "eg_is_cointegrated": true,
+        "johansen_is_cointegrated": false
+      },
+      "stationarity": {
+        "adf_pvalue": 0.01503257941147402,
+        "adf_is_stationary": true,
+        "kpss_pvalue": 0.01,
+        "kpss_is_stationary": false
+      },
+      "mean_reversion": {
+        "half_life_bars": 543.0962901907119,
+        "half_life_days": 22.629012091279662,
+        "hurst_exponent": 0.9930945683447436
+      },
+      "spread": {
+        "hedge_ratio": -9.525198423078127e-05,
+        "hedge_ratio_std": 0.0030141828967373383,
+        "current_zscore": 1.5239992335322754
+      },
+      "warnings": [
+        "Half-life long: 543 bars (22.6 days)",
+        "Hurst indicates trending: 0.993"
+      ],
+      "rejection_reasons": [
+        "Low correlation: -0.052"
+      ]
+    }
+  ]
+}

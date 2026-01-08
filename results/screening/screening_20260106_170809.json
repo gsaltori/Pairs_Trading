@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-01-06T17:07:49.566084",
+  "symbols_analyzed": 15,
+  "pairs_analyzed": 105,
+  "pairs_passed": 3,
+  "avg_correlation": 0.07105071070855729,
+  "cointegration_rate": 0.1523809523809524,
+  "top_pairs": [
+    {
+      "pair": [
+        "USDJPY",
+        "AUDJPY"
+      ],
+      "total_score": 67.22337721072593,
+      "price_correlation": 0.8429521212509697,
+      "returns_correlation": 0.5925114963995562,
+      "is_cointegrated": true,
+      "coint_pvalue": 0.0856680561388593,
+      "adf_pvalue": 0.017367165782728934,
+      "half_life": 591.5883200151646,
+      "hurst": 0.9936388911120965,
+      "current_zscore": -1.408153023413993,
+      "hedge_ratio": 1.3049583484924898,
+      "is_tradeable": true,
+      "scores": {
+        "correlation": 100.0,
+        "cointegration": 85.0,
+        "mean_reversion": 36.0,
+        "tradability": 44.48918140483958
+      }
+    },
+    {
+      "pair": [
+        "GBPJPY",
+        "AUDNZD"
+      ],
+      "total_score": 63.58942436520111,
+      "price_correlation": 0.6577541181616987,
+      "returns_correlation": 0.17529156888722308,
+      "is_cointegrated": true,
+      "coint_pvalue": 0.07627695371736005,
+      "adf_pvalue": 0.02114046495556516,
+      "half_life": 743.0317677434085,
+      "hurst": 1.0,
+      "current_zscore": -2.121543273122194,
+      "hedge_ratio": 313.12081780484004,
+      "is_tradeable": true,
+      "scores": {
+        "correlation": 51.55082363233974,
+        "cointegration": 85.0,
+        "mean_reversion": 36.0,
+        "tradability": 84.86173092488777
+      }
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "EURAUD"
+      ],
+      "total_score": 62.004834054763464,
+      "price_correlation": 0.7333854706041413,
+      "returns_correlation": -0.10767272496053236,
+      "is_cointegrated": true,
+      "coint_pvalue": 0.027405666639282813,
+      "adf_pvalue": 0.006567900075180169,
+      "half_life": 476.6743062296482,
+      "hurst": 0.995672567416093,
+      "current_zscore": 0.9564717435326051,
+      "hedge_ratio": 0.4775489339072342,
+      "is_tradeable": true,
+      "scores": {
+        "correlation": 66.67709412082826,
+        "cointegration": 100.0,
+        "mean_reversion": 36.0,
+        "tradability": 19.1294348706521
+      }
+    }
+  ]
+}
