@@ -1,0 +1,410 @@
+{
+  "timestamp": "2026-01-09T20:03:29.614055",
+  "version": "2.1-institutional",
+  "timeframe": "H4",
+  "fsm": {
+    "mode": "MODE_LIVE_CHECK",
+    "can_generate_signals": true,
+    "can_evaluate_drawdown": false,
+    "can_place_orders": false
+  },
+  "kill_switch": {
+    "is_active": false,
+    "primary_reason": "none",
+    "secondary_reason": "Kill-switch inactive",
+    "mode": "MODE_LIVE_CHECK",
+    "timestamp": "2026-01-09T23:03:26.982512"
+  },
+  "equity": {
+    "current": 0.0,
+    "peak": 0.0,
+    "drawdown_pct": 0.0,
+    "initialized": false,
+    "drawdown_valid": false
+  },
+  "data": {
+    "symbols_loaded": 28,
+    "symbols_rejected": 0,
+    "common_bars": 4379
+  },
+  "regime": {
+    "current": "stable_low_vol",
+    "permits_crv": true,
+    "confidence": 1.0,
+    "volatility": "low",
+    "trend_strength": "none",
+    "sentiment": "risk_on"
+  },
+  "structural_pairs": [
+    {
+      "pair": [
+        "AUDUSD",
+        "NZDUSD"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.95,
+      "correlation_median": 0.895517361686703,
+      "correlation_low_vol": 0.843654248538192,
+      "hedge_ratio": 0.24071152526341066,
+      "structural_score": 92.9
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "GBPUSD"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.9,
+      "correlation_median": 0.8049415289092474,
+      "correlation_low_vol": 0.7519191435814963,
+      "hedge_ratio": 0.6569515857910133,
+      "structural_score": 92.0
+    },
+    {
+      "pair": [
+        "AUDCHF",
+        "NZDCHF"
+      ],
+      "tier": "A",
+      "relationship": "commodity_block",
+      "macro_coherence": 0.82,
+      "correlation_median": 0.8562893615820891,
+      "correlation_low_vol": 0.808073013856794,
+      "hedge_ratio": 0.955980882501752,
+      "structural_score": 89.4
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDCHF"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.6824444206901918,
+      "correlation_low_vol": 0.6305306245764838,
+      "hedge_ratio": 0.38131709778488343,
+      "structural_score": 85.4
+    },
+    {
+      "pair": [
+        "EURAUD",
+        "GBPAUD"
+      ],
+      "tier": "A",
+      "relationship": "european_block",
+      "macro_coherence": 0.75,
+      "correlation_median": 0.8045323858752941,
+      "correlation_low_vol": 0.7487311238701214,
+      "hedge_ratio": 1.401032898266931,
+      "structural_score": 84.5
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "AUDJPY"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.72,
+      "correlation_median": 0.7134618038296721,
+      "correlation_low_vol": 0.6611907242280319,
+      "hedge_ratio": -0.668340732639229,
+      "structural_score": 84.4
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDCAD"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.8441537431672623,
+      "correlation_low_vol": 0.7989522521323604,
+      "hedge_ratio": 0.21400673834659756,
+      "structural_score": 84.0
+    },
+    {
+      "pair": [
+        "NZDUSD",
+        "NZDCAD"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.8515601073386296,
+      "correlation_low_vol": 0.8008646957774946,
+      "hedge_ratio": 0.4217483722596753,
+      "structural_score": 84.0
+    },
+    {
+      "pair": [
+        "EURAUD",
+        "EURNZD"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.8071716468030266,
+      "correlation_low_vol": 0.728082234779822,
+      "hedge_ratio": 0.3957109547469564,
+      "structural_score": 84.0
+    },
+    {
+      "pair": [
+        "AUDCAD",
+        "AUDCHF"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.613340858434472,
+      "correlation_low_vol": 0.5800912610934521,
+      "hedge_ratio": 1.925891042711151,
+      "structural_score": 84.0
+    },
+    {
+      "pair": [
+        "NZDCAD",
+        "NZDCHF"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.8,
+      "correlation_median": 0.6255419712929162,
+      "correlation_low_vol": 0.567583453808305,
+      "hedge_ratio": 2.1978389478789104,
+      "structural_score": 84.0
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "CADJPY"
+      ],
+      "tier": "A",
+      "relationship": "risk_proxy",
+      "macro_coherence": 0.7,
+      "correlation_median": 0.7654659672097588,
+      "correlation_low_vol": 0.7306943166207749,
+      "hedge_ratio": 0.922246501993456,
+      "structural_score": 83.4
+    },
+    {
+      "pair": [
+        "GBPJPY",
+        "AUDJPY"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.7,
+      "correlation_median": 0.731586354144498,
+      "correlation_low_vol": 0.6691010250735016,
+      "hedge_ratio": 0.755235421562301,
+      "structural_score": 83.4
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "NZDUSD"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.7,
+      "correlation_median": 0.6811005828179303,
+      "correlation_low_vol": 0.6204668067091391,
+      "hedge_ratio": 1.156424160211877,
+      "structural_score": 82.0
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "AUDUSD"
+      ],
+      "tier": "A",
+      "relationship": "shared_quote",
+      "macro_coherence": 0.7,
+      "correlation_median": 0.6935963870853012,
+      "correlation_low_vol": 0.6504131233532392,
+      "hedge_ratio": 1.0300358227752415,
+      "structural_score": 82.0
+    }
+  ],
+  "signals": [
+    {
+      "pair": [
+        "EURAUD",
+        "EURNZD"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": -2.4510303307333445,
+      "signal_type": "long_spread",
+      "confidence": 0.8170101102444481
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "NZDUSD"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 2.43374835852035,
+      "signal_type": "short_spread",
+      "confidence": 0.8112494528401166
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "CADJPY"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 1.7365641351945145,
+      "signal_type": "short_spread",
+      "confidence": 0.5788547117315048
+    },
+    {
+      "pair": [
+        "EURJPY",
+        "AUDJPY"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 1.7132912503420197,
+      "signal_type": "short_spread",
+      "confidence": 0.5710970834473399
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "NZDUSD"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 1.68655371448714,
+      "signal_type": "short_spread",
+      "confidence": 0.5621845714957133
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDCHF"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 1.6477031392569979,
+      "signal_type": "short_spread",
+      "confidence": 0.5492343797523326
+    },
+    {
+      "pair": [
+        "AUDCAD",
+        "AUDCHF"
+      ],
+      "is_tradeable": true,
+      "is_valid": true,
+      "zscore_conditional": 1.5227299337541986,
+      "signal_type": "short_spread",
+      "confidence": 0.5075766445847328
+    },
+    {
+      "pair": [
+        "EURUSD",
+        "GBPUSD"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": 1.4953971381543412,
+      "signal_type": "no_signal",
+      "confidence": 0.49846571271811374
+    },
+    {
+      "pair": [
+        "NZDCAD",
+        "NZDCHF"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": 1.4354667758363766,
+      "signal_type": "no_signal",
+      "confidence": 0.4784889252787922
+    },
+    {
+      "pair": [
+        "GBPJPY",
+        "AUDJPY"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": 1.4158751959415226,
+      "signal_type": "no_signal",
+      "confidence": 0.4719583986471742
+    },
+    {
+      "pair": [
+        "GBPUSD",
+        "AUDUSD"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": 1.2891300065000302,
+      "signal_type": "no_signal",
+      "confidence": 0.4297100021666767
+    },
+    {
+      "pair": [
+        "NZDUSD",
+        "NZDCAD"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": -1.1069139414408704,
+      "signal_type": "no_signal",
+      "confidence": 0.0
+    },
+    {
+      "pair": [
+        "AUDUSD",
+        "AUDCAD"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": -0.3426607485985313,
+      "signal_type": "no_signal",
+      "confidence": 0.0
+    },
+    {
+      "pair": [
+        "EURAUD",
+        "GBPAUD"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": -0.2662593565603556,
+      "signal_type": "no_signal",
+      "confidence": 0.0
+    },
+    {
+      "pair": [
+        "AUDCHF",
+        "NZDCHF"
+      ],
+      "is_tradeable": false,
+      "is_valid": true,
+      "zscore_conditional": -0.10048663261437277,
+      "signal_type": "no_signal",
+      "confidence": 0.0
+    }
+  ],
+  "system_state": {
+    "health": "critical",
+    "active": false,
+    "inactivity_reason": "Kill-switch: drawdown_limit",
+    "kill_switch": true,
+    "drawdown": 0.0,
+    "exposure": 0
+  }
+}

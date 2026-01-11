@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-01-08T19:35:29.993179",
+  "timeframe": "H4",
+  "regime": {
+    "current": "stable_low_vol",
+    "permits_crv": true,
+    "confidence": 1.0,
+    "volatility": "low",
+    "trend_strength": "none",
+    "sentiment": "neutral"
+  },
+  "structural_pairs": [],
+  "signals": []
+}
