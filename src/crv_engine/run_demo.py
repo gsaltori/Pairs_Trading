@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-CRV Engine Demo - P4 Structural Gating Impact Analysis
+CRV Engine Demo - P4 Structural + P5 Regime Memory Comparison
 
 This script demonstrates:
 1. UNGATED P1 predictions (original behavior)
-2. GATED P1 predictions (with P4 structural filtering)
-3. Side-by-side comparison of CRR and invalidation rates
-
-KEY QUESTION: Does P4 gating reduce invalidation without inflating CRR?
+2. P4 GATED predictions (structural filtering only)
+3. P4+P5 GATED predictions (structural + regime memory)
 
 MOCK DATA - NOT REAL MARKET DATA
 """
@@ -15,7 +13,7 @@ MOCK DATA - NOT REAL MARKET DATA
 import sys
 from datetime import datetime, timezone
 from dataclasses import dataclass
-from typing import Tuple, Dict
+from typing import Tuple, Optional, Dict
 
 try:
     from .config import CONFIG
@@ -24,7 +22,11 @@ try:
     from .predictions import PredictionGenerator, GatedPredictionGenerator
     from .resolution import ResolutionEngine, ResolutionState
     from .statistics import StatisticsAccumulator, ResolutionStatistics
-    from .structural import STRUCTURAL_CONFIG
+    from .structural import StructuralStabilityEvaluator, StructuralValidity, STRUCTURAL_CONFIG
+    from .regime import (
+        RegimeMemory, RegimeEvaluator, OutcomeRecorder,
+        create_regime_signature, REGIME_CONFIG, RegimeSignature,
+    )
 except ImportError:
     from config import CONFIG
     from observations import generate_observation_stream, ObservationStream
@@ -32,360 +34,319 @@ except ImportError:
     from predictions import PredictionGenerator, GatedPredictionGenerator
     from resolution import ResolutionEngine, ResolutionState
     from statistics import StatisticsAccumulator, ResolutionStatistics
-    from structural import STRUCTURAL_CONFIG
+    from structural import StructuralStabilityEvaluator, StructuralValidity, STRUCTURAL_CONFIG
+    from regime import (
+        RegimeMemory, RegimeEvaluator, OutcomeRecorder,
+        create_regime_signature, REGIME_CONFIG, RegimeSignature,
+    )
 
 
 @dataclass
-class DemoResult:
+class RunResult:
     """Results from a single demo run."""
     mode: str
     stats: ResolutionStatistics
     total_generated: int
-    total_blocked: int
-    block_reasons: Dict[str, int]
+    blocked_structural: int
+    blocked_regime: int
+    cold_start_allowed: int
+    regime_stats: Optional[Dict] = None
 
 
-def run_ungated(
-    observation_stream: ObservationStream,
-) -> DemoResult:
-    """
-    Run P1 predictions WITHOUT structural gating.
-    
-    This is the baseline for comparison.
-    """
+def run_ungated(observation_stream: ObservationStream) -> RunResult:
+    """Run engine without any gating."""
     spread_calc = SpreadCalculator()
-    pred_gen = PredictionGenerator()
+    pred_generator = PredictionGenerator()
     resolution_engine = ResolutionEngine()
-    stats_acc = StatisticsAccumulator()
+    stats_accumulator = StatisticsAccumulator()
     
-    for bar_index, obs in enumerate(observation_stream):
-        spread_obs = spread_calc.update(obs)
+    for bar_index, observation in enumerate(observation_stream):
+        spread_obs = spread_calc.update(observation)
         
         if spread_obs is None or not spread_obs.is_valid:
             continue
         
-        # Check for P1 generation (no structural gate)
-        if pred_gen.should_generate(spread_obs):
-            prediction = pred_gen.generate(spread_obs, bar_index)
+        if pred_generator.should_generate(spread_obs):
+            prediction = pred_generator.generate(spread_obs, bar_index)
             resolution_engine.add_pending(prediction)
-            stats_acc.add(prediction)
+            stats_accumulator.add(prediction)
         
-        # Process resolutions
         results = resolution_engine.process(spread_obs, bar_index)
         for result in results:
             if result.state is not None:
-                pred_gen.mark_resolved(CONFIG.PAIR)
+                pred_generator.mark_resolved(CONFIG.PAIR)
     
-    return DemoResult(
+    return RunResult(
         mode="UNGATED",
-        stats=stats_acc.compute(),
-        total_generated=pred_gen.total_generated,
-        total_blocked=0,
-        block_reasons={},
+        stats=stats_accumulator.compute(),
+        total_generated=pred_generator.total_generated,
+        blocked_structural=0,
+        blocked_regime=0,
+        cold_start_allowed=0,
     )
 
 
-def run_gated(
-    observation_stream: ObservationStream,
-) -> DemoResult:
-    """
-    Run P1 predictions WITH P4 structural gating.
-    """
+def run_p4_gated(observation_stream: ObservationStream) -> RunResult:
+    """Run engine with P4 structural gating only."""
     spread_calc = SpreadCalculator()
-    pred_gen = GatedPredictionGenerator()
+    pred_generator = GatedPredictionGenerator()  # Uses internal StructuralGate
     resolution_engine = ResolutionEngine()
-    stats_acc = StatisticsAccumulator()
+    stats_accumulator = StatisticsAccumulator()
     
-    for bar_index, obs in enumerate(observation_stream):
-        # Update price history for volatility calculation
-        pred_gen.update_prices(obs.bar_a.close, obs.bar_b.close)
-        
-        spread_obs = spread_calc.update(obs)
+    for bar_index, observation in enumerate(observation_stream):
+        spread_obs = spread_calc.update(observation)
         
         if spread_obs is None or not spread_obs.is_valid:
             continue
         
-        # Check for P1 generation (WITH structural gate)
-        if pred_gen.should_generate(spread_obs, bar_index):
-            prediction = pred_gen.generate(spread_obs, bar_index)
+        if pred_generator.should_generate(spread_obs, bar_index):
+            prediction = pred_generator.generate(spread_obs, bar_index)
             resolution_engine.add_pending(prediction)
-            stats_acc.add(prediction)
+            stats_accumulator.add(prediction)
+        
+        results = resolution_engine.process(spread_obs, bar_index)
+        for result in results:
+            if result.state is not None:
+                pred_generator.mark_resolved(CONFIG.PAIR)
+    
+    return RunResult(
+        mode="P4_GATED",
+        stats=stats_accumulator.compute(),
+        total_generated=pred_generator.total_generated,
+        blocked_structural=pred_generator.total_blocked,
+        blocked_regime=0,
+        cold_start_allowed=0,
+    )
+
+
+def run_p4_p5_gated(observation_stream: ObservationStream) -> RunResult:
+    """Run engine with P4 structural + P5 regime memory gating."""
+    spread_calc = SpreadCalculator()
+    structural_eval = StructuralStabilityEvaluator()
+    regime_memory = RegimeMemory()
+    regime_evaluator = RegimeEvaluator(regime_memory)
+    outcome_recorder = OutcomeRecorder(regime_memory)
+    pred_generator = PredictionGenerator()  # Base generator
+    resolution_engine = ResolutionEngine()
+    stats_accumulator = StatisticsAccumulator()
+    
+    blocked_structural = 0
+    blocked_regime = 0
+    cold_start_allowed = 0
+    
+    # Track predictions with their regimes
+    prediction_regimes: Dict[str, RegimeSignature] = {}
+    
+    for bar_index, observation in enumerate(observation_stream):
+        # Update structural evaluator
+        corr = spread_calc.get_current_correlation() if len(spread_calc._prices_a) >= CONFIG.ZSCORE_WINDOW else 0.5
+        structural_eval.update(observation.timestamp, corr, 0.01, 0.01, 0.001)
+        
+        spread_obs = spread_calc.update(observation)
+        
+        if spread_obs is None or not spread_obs.is_valid:
+            continue
+        
+        # Check base conditions
+        if pred_generator.should_generate(spread_obs):
+            # P4: Check structural stability
+            structural_state = structural_eval.evaluate(observation.timestamp)
+            
+            if not structural_state.is_valid:
+                blocked_structural += 1
+                continue
+            
+            # P5: Create regime signature and check
+            regime = create_regime_signature(
+                structural_state.correlation_stability,
+                structural_state.correlation_trend,
+                structural_state.volatility_ratio_stability,
+                structural_state.spread_variance_ratio,
+            )
+            
+            regime_eval = regime_evaluator.evaluate(regime)
+            
+            if not regime_eval.is_allowed:
+                blocked_regime += 1
+                continue
+            
+            if "cold_start" in regime_eval.reason:
+                cold_start_allowed += 1
+            
+            # Generate prediction
+            prediction = pred_generator.generate(spread_obs, bar_index)
+            resolution_engine.add_pending(prediction)
+            stats_accumulator.add(prediction)
+            
+            # Track for regime learning
+            prediction_regimes[prediction.prediction_id] = regime
+            outcome_recorder.track_prediction(
+                prediction.prediction_id, regime, prediction.creation_timestamp
+            )
         
         # Process resolutions
         results = resolution_engine.process(spread_obs, bar_index)
         for result in results:
             if result.state is not None:
-                pred_gen.mark_resolved(CONFIG.PAIR)
+                pred_generator.mark_resolved(CONFIG.PAIR)
+                
+                # Record outcome
+                for pred in resolution_engine.get_resolved():
+                    if pred.prediction_id == result.prediction_id:
+                        outcome_recorder.record_resolution(
+                            pred.prediction_id,
+                            pred.resolution_state,
+                            pred.resolution_timestamp,
+                            pred.resolution_bars_elapsed,
+                        )
     
-    return DemoResult(
-        mode="GATED",
-        stats=stats_acc.compute(),
-        total_generated=pred_gen.total_generated,
-        total_blocked=pred_gen.total_blocked,
-        block_reasons=pred_gen.get_block_reasons_summary(),
+    # Get regime statistics
+    regime_stats = {}
+    for regime, stats in regime_memory.get_all_stats().items():
+        regime_stats[regime.short_code()] = {
+            'testable': stats.testable_count,
+            'confirmed': stats.confirmed_count,
+            'refuted': stats.refuted_count,
+            'crr': stats.raw_confirmation_rate,
+            'confidence': stats.confidence_score,
+        }
+    
+    return RunResult(
+        mode="P4+P5_GATED",
+        stats=stats_accumulator.compute(),
+        total_generated=pred_generator.total_generated,
+        blocked_structural=blocked_structural,
+        blocked_regime=blocked_regime,
+        cold_start_allowed=cold_start_allowed,
+        regime_stats=regime_stats,
     )
 
 
-def print_comparison(ungated: DemoResult, gated: DemoResult) -> None:
-    """Print side-by-side comparison of results."""
-    u = ungated.stats
-    g = gated.stats
+def print_comparison(ungated: RunResult, p4: RunResult, p4p5: RunResult) -> None:
+    """Print comparison of all three modes."""
+    print()
+    print("=" * 90)
+    print("                    P4 + P5 GATING COMPARISON")
+    print("=" * 90)
+    print()
+    print(f"{'Metric':<35} {'UNGATED':>15} {'P4 ONLY':>15} {'P4+P5':>15}")
+    print("-" * 90)
+    
+    print(f"{'Predictions Generated':<35} {ungated.total_generated:>15} {p4.total_generated:>15} {p4p5.total_generated:>15}")
+    print(f"{'Blocked by P4 (Structural)':<35} {ungated.blocked_structural:>15} {p4.blocked_structural:>15} {p4p5.blocked_structural:>15}")
+    print(f"{'Blocked by P5 (Regime)':<35} {'-':>15} {'-':>15} {p4p5.blocked_regime:>15}")
+    print(f"{'Allowed (Cold Start)':<35} {'-':>15} {'-':>15} {p4p5.cold_start_allowed:>15}")
     
     print()
-    print("=" * 78)
-    print("              P4 STRUCTURAL GATING IMPACT ANALYSIS")
-    print("=" * 78)
-    print()
+    print("-" * 90)
     
-    # Header
-    print(f"{'METRIC':<35} {'UNGATED':>15} {'GATED':>15} {'Δ':>10}")
-    print("-" * 78)
+    u, p, pp = ungated.stats, p4.stats, p4p5.stats
     
-    # Generation
-    print(f"{'Total Predictions Generated':<35} {ungated.total_generated:>15} {gated.total_generated:>15} {gated.total_generated - ungated.total_generated:>+10}")
-    print(f"{'Predictions Blocked by P4':<35} {ungated.total_blocked:>15} {gated.total_blocked:>15} {gated.total_blocked:>+10}")
-    
-    if gated.total_blocked > 0:
-        potential = gated.total_generated + gated.total_blocked
-        block_rate = gated.total_blocked / potential
-        print(f"{'P4 Block Rate':<35} {'N/A':>15} {block_rate:>14.1%} {'-':>10}")
+    print(f"{'Resolved':<35} {u.resolved_count:>15} {p.resolved_count:>15} {pp.resolved_count:>15}")
+    print(f"{'  CONFIRMED':<35} {u.confirmed_count:>15} {p.confirmed_count:>15} {pp.confirmed_count:>15}")
+    print(f"{'  REFUTED':<35} {u.refuted_count:>15} {p.refuted_count:>15} {pp.refuted_count:>15}")
+    print(f"{'  TIMEOUT':<35} {u.timeout_count:>15} {p.timeout_count:>15} {pp.timeout_count:>15}")
+    print(f"{'  INVALIDATED':<35} {u.invalidated_count:>15} {p.invalidated_count:>15} {pp.invalidated_count:>15}")
     
     print()
-    print("-" * 78)
+    print("-" * 90)
     
-    # Resolution breakdown
-    print(f"{'Resolved':<35} {u.resolved_count:>15} {g.resolved_count:>15} {g.resolved_count - u.resolved_count:>+10}")
-    print(f"{'  CONFIRMED':<35} {u.confirmed_count:>15} {g.confirmed_count:>15} {g.confirmed_count - u.confirmed_count:>+10}")
-    print(f"{'  REFUTED':<35} {u.refuted_count:>15} {g.refuted_count:>15} {g.refuted_count - u.refuted_count:>+10}")
-    print(f"{'  TIMEOUT':<35} {u.timeout_count:>15} {g.timeout_count:>15} {g.timeout_count - u.timeout_count:>+10}")
-    print(f"{'  INVALIDATED':<35} {u.invalidated_count:>15} {g.invalidated_count:>15} {g.invalidated_count - u.invalidated_count:>+10}")
+    print(f"{'Testable Count':<35} {u.testable_count:>15} {p.testable_count:>15} {pp.testable_count:>15}")
+    print(f"{'CRR (Edge Metric)':<35} {u.crr:>14.1%} {p.crr:>14.1%} {pp.crr:>14.1%}")
+    print(f"{'Invalidation Rate':<35} {u.invalidation_rate:>14.1%} {p.invalidation_rate:>14.1%} {pp.invalidation_rate:>14.1%}")
     
     print()
-    print("-" * 78)
+    print("=" * 90)
     
-    # Key metrics
-    print(f"{'Testable Count':<35} {u.testable_count:>15} {g.testable_count:>15} {g.testable_count - u.testable_count:>+10}")
-    
-    crr_delta = g.crr - u.crr
-    print(f"{'CRR (Edge Metric)':<35} {u.crr:>14.1%} {g.crr:>14.1%} {crr_delta:>+9.1%}")
-    
-    inv_delta = g.invalidation_rate - u.invalidation_rate
-    print(f"{'Invalidation Rate':<35} {u.invalidation_rate:>14.1%} {g.invalidation_rate:>14.1%} {inv_delta:>+9.1%}")
-    
-    to_delta = g.timeout_rate - u.timeout_rate
-    print(f"{'Timeout Rate':<35} {u.timeout_rate:>14.1%} {g.timeout_rate:>14.1%} {to_delta:>+9.1%}")
-    
-    print()
-    print("=" * 78)
-    
-    # Block reasons breakdown
-    if gated.block_reasons:
+    # Regime stats
+    if p4p5.regime_stats:
         print()
-        print("P4 BLOCK REASONS:")
-        print("-" * 40)
-        total_reasons = sum(gated.block_reasons.values())
-        for reason, count in sorted(gated.block_reasons.items(), key=lambda x: -x[1]):
-            pct = count / total_reasons if total_reasons > 0 else 0
-            print(f"  {reason:<28} {count:>5} ({pct:>5.1%})")
+        print("P5 REGIME MEMORY STATISTICS:")
+        print("-" * 60)
+        print(f"{'Regime':<10} {'Testable':>10} {'Confirmed':>10} {'CRR':>10} {'Conf':>10}")
+        print("-" * 60)
+        
+        for code, stats in sorted(p4p5.regime_stats.items(), key=lambda x: -x[1]['testable']):
+            if stats['testable'] >= 3:
+                print(f"{code:<10} {stats['testable']:>10} {stats['confirmed']:>10} "
+                      f"{stats['crr']:>9.1%} {stats['confidence']:>9.1%}")
+        
+        # Show regimes that would be blocked
+        print()
+        print("REGIMES THAT WOULD BE BLOCKED (with sufficient samples):")
+        for code, stats in sorted(p4p5.regime_stats.items(), key=lambda x: x[1]['confidence']):
+            if stats['testable'] >= 5 and stats['confidence'] < REGIME_CONFIG.MIN_CONFIDENCE_THRESHOLD:
+                print(f"  {code}: CRR={stats['crr']:.1%}, Conf={stats['confidence']:.1%}, N={stats['testable']}")
     
-    # Interpretation
+    # Summary
     print()
-    print("=" * 78)
+    print("=" * 90)
     print("INTERPRETATION:")
-    print("-" * 78)
+    print("-" * 90)
     
-    # Check invalidation reduction
-    if u.invalidation_rate > 0:
-        inv_reduction_pct = (u.invalidation_rate - g.invalidation_rate) / u.invalidation_rate
-    else:
-        inv_reduction_pct = 0
+    p4_inv_reduction = u.invalidation_rate - p.invalidation_rate
+    total_inv_reduction = u.invalidation_rate - pp.invalidation_rate
     
-    if g.invalidation_rate < u.invalidation_rate:
-        print(f"  [✓] P4 REDUCED invalidation by {abs(inv_delta):.1%} (relative: {inv_reduction_pct:.0%})")
-    else:
-        print(f"  [X] P4 did NOT reduce invalidation rate")
+    print(f"  P4 Invalidation Reduction: {p4_inv_reduction:+.1%}")
+    print(f"  P5 Regime Blocks: {p4p5.blocked_regime}")
+    print(f"  TOTAL Invalidation Reduction: {total_inv_reduction:+.1%}")
     
-    # Check CRR stability
-    if abs(crr_delta) < 0.05:
-        print(f"  [✓] CRR remained stable (Δ={crr_delta:+.1%}) - NOT artificially inflated")
-    elif crr_delta > 0.05:
-        print(f"  [?] CRR increased by {crr_delta:.1%} - may indicate survivor bias")
+    if p4p5.blocked_regime > 0:
+        print("  P5 VERDICT: Regime memory is ACTIVE and blocking unproductive contexts")
+    elif p4p5.cold_start_allowed > 10:
+        print("  P5 VERDICT: Regime memory in LEARNING phase")
     else:
-        print(f"  [~] CRR decreased by {abs(crr_delta):.1%}")
-    
-    # Final verdict
-    print()
-    effectiveness = False
-    if g.invalidation_rate < u.invalidation_rate * 0.70:  # 30%+ reduction
-        if abs(crr_delta) < 0.10:  # CRR stable within 10%
-            effectiveness = True
-            print("  VERDICT: P4 gating is EFFECTIVE")
-            print("    - Materially reduces invalidation")
-            print("    - Does not artificially inflate CRR")
-        else:
-            print("  VERDICT: P4 gating shows PROMISE but CRR change needs investigation")
-    elif g.invalidation_rate < u.invalidation_rate:
-        print("  VERDICT: P4 gating shows MODERATE improvement")
-    else:
-        print("  VERDICT: P4 gating NOT effective in this sample")
+        print("  P5 VERDICT: Insufficient history for regime learning")
     
     print()
-    print("-" * 78)
-    print("  NOTE: This is MOCK data. Validate with live MT5 data.")
-    print("=" * 78)
+    print("  NOTE: This is MOCK data. P5 needs extended run (5000+ bars) to fully learn.")
+    print("=" * 90)
 
 
-def run_demo(
-    n_bars: int = 2000,
-    seed: int = 42,
-    verbose: bool = True,
-) -> Tuple[DemoResult, DemoResult]:
-    """
-    Run the complete demo with both gated and ungated modes.
-    """
-    print("=" * 78)
+def run_demo(n_bars: int = 2000, seed: int = 42) -> None:
+    """Run the comparison demo."""
+    print("=" * 90)
     print("        FX CONDITIONAL RELATIVE VALUE - RESEARCH ENGINE DEMO")
-    print("                   P4 Structural Gating Analysis")
-    print("=" * 78)
+    print("               P4 Structural + P5 Regime Memory Analysis")
+    print("=" * 90)
     print()
-    
     print(f"Configuration:")
-    print(f"  Pair:                  {CONFIG.PAIR}")
-    print(f"  Timeframe:             {CONFIG.TIMEFRAME}")
-    print(f"  Z-Score Window:        {CONFIG.ZSCORE_WINDOW} bars")
-    print(f"  Trigger Threshold:     |Z| > {CONFIG.TRIGGER_THRESHOLD}")
-    print(f"  Confirmation:          |Z| < {CONFIG.CONFIRMATION_THRESHOLD}")
-    print(f"  Refutation:            |Z| > {CONFIG.REFUTATION_THRESHOLD}")
-    print(f"  Max Holding:           {CONFIG.MAX_HOLDING_BARS} bars")
-    print(f"  Demo Bars:             {n_bars}")
-    print(f"  Random Seed:           {seed}")
+    print(f"  Pair:               {CONFIG.PAIR}")
+    print(f"  Demo Bars:          {n_bars}")
+    print(f"  Random Seed:        {seed}")
     print()
-    
-    print("P4 Structural Thresholds:")
-    print(f"  Max Correlation Std:   {STRUCTURAL_CONFIG.MAX_CORRELATION_STD}")
-    print(f"  Min Correlation Trend: {STRUCTURAL_CONFIG.MIN_CORRELATION_TREND}")
-    print(f"  Max Vol Ratio Std:     {STRUCTURAL_CONFIG.MAX_VOLATILITY_RATIO_STD}")
-    print(f"  Max Spread Var Ratio:  {STRUCTURAL_CONFIG.MAX_SPREAD_VARIANCE_RATIO}")
+    print("P5 Regime Config:")
+    print(f"  Max Memory:         {REGIME_CONFIG.MAX_MEMORY_SIZE}")
+    print(f"  Min Samples:        {REGIME_CONFIG.MIN_SAMPLES_FOR_CONFIDENCE}")
+    print(f"  Min Confidence:     {REGIME_CONFIG.MIN_CONFIDENCE_THRESHOLD:.0%}")
     print()
     
     print("Generating synthetic data...")
-    print("  [MOCK: This is NOT real market data]")
-    print()
+    obs_ungated = generate_observation_stream(n_bars=n_bars, seed=seed)
+    obs_p4 = generate_observation_stream(n_bars=n_bars, seed=seed)
+    obs_p4p5 = generate_observation_stream(n_bars=n_bars, seed=seed)
     
-    # Run UNGATED
     print("Running UNGATED mode...")
-    obs_stream_1 = generate_observation_stream(n_bars=n_bars, seed=seed)
-    ungated_result = run_ungated(obs_stream_1)
-    print(f"  Generated: {ungated_result.total_generated} predictions")
-    print(f"  Resolved:  {ungated_result.stats.resolved_count}")
-    print(f"  Invalidated: {ungated_result.stats.invalidated_count}")
-    print()
+    ungated = run_ungated(obs_ungated)
+    print(f"  Generated: {ungated.total_generated}")
     
-    # Run GATED
-    print("Running GATED mode (P4 structural filtering)...")
-    obs_stream_2 = generate_observation_stream(n_bars=n_bars, seed=seed)
-    gated_result = run_gated(obs_stream_2)
-    print(f"  Generated: {gated_result.total_generated} predictions")
-    print(f"  Blocked:   {gated_result.total_blocked} predictions")
-    print(f"  Resolved:  {gated_result.stats.resolved_count}")
-    print(f"  Invalidated: {gated_result.stats.invalidated_count}")
-    print()
+    print("Running P4 GATED mode...")
+    p4 = run_p4_gated(obs_p4)
+    print(f"  Generated: {p4.total_generated}, Blocked: {p4.blocked_structural}")
     
-    # Print comparison
-    print_comparison(ungated_result, gated_result)
+    print("Running P4+P5 GATED mode...")
+    p4p5 = run_p4_p5_gated(obs_p4p5)
+    print(f"  Generated: {p4p5.total_generated}, Struct: {p4p5.blocked_structural}, Regime: {p4p5.blocked_regime}")
     
-    return ungated_result, gated_result
-
-
-def run_multiple_seeds(n_seeds: int = 5, n_bars: int = 2000) -> None:
-    """
-    Run demo with multiple seeds to assess robustness.
-    """
-    print()
-    print("=" * 78)
-    print("              MULTI-SEED ROBUSTNESS ANALYSIS")
-    print("=" * 78)
-    print()
-    
-    results = []
-    
-    for seed in range(42, 42 + n_seeds):
-        print(f"Processing seed {seed}...", end=" ")
-        
-        obs_1 = generate_observation_stream(n_bars=n_bars, seed=seed)
-        obs_2 = generate_observation_stream(n_bars=n_bars, seed=seed)
-        
-        ungated = run_ungated(obs_1)
-        gated = run_gated(obs_2)
-        
-        results.append({
-            'seed': seed,
-            'u_crr': ungated.stats.crr,
-            'g_crr': gated.stats.crr,
-            'u_inv': ungated.stats.invalidation_rate,
-            'g_inv': gated.stats.invalidation_rate,
-            'blocked': gated.total_blocked,
-            'u_testable': ungated.stats.testable_count,
-            'g_testable': gated.stats.testable_count,
-        })
-        
-        print(f"CRR: {ungated.stats.crr:.1%} → {gated.stats.crr:.1%}, "
-              f"Inv: {ungated.stats.invalidation_rate:.1%} → {gated.stats.invalidation_rate:.1%}")
-    
-    print()
-    print("=" * 78)
-    print("SUMMARY ACROSS SEEDS:")
-    print("-" * 78)
-    print(f"{'Seed':<6} {'CRR(U)':<10} {'CRR(G)':<10} {'Inv(U)':<10} {'Inv(G)':<10} {'Blocked':<10}")
-    print("-" * 78)
-    
-    for r in results:
-        print(f"{r['seed']:<6} {r['u_crr']:.1%}     {r['g_crr']:.1%}     "
-              f"{r['u_inv']:.1%}     {r['g_inv']:.1%}     {r['blocked']:<10}")
-    
-    # Compute averages
-    avg_u_crr = sum(r['u_crr'] for r in results) / len(results)
-    avg_g_crr = sum(r['g_crr'] for r in results) / len(results)
-    avg_u_inv = sum(r['u_inv'] for r in results) / len(results)
-    avg_g_inv = sum(r['g_inv'] for r in results) / len(results)
-    avg_blocked = sum(r['blocked'] for r in results) / len(results)
-    
-    print("-" * 78)
-    print(f"{'AVG':<6} {avg_u_crr:.1%}     {avg_g_crr:.1%}     "
-          f"{avg_u_inv:.1%}     {avg_g_inv:.1%}     {avg_blocked:.0f}")
-    
-    print()
-    print("AGGREGATE ANALYSIS:")
-    crr_change = avg_g_crr - avg_u_crr
-    inv_reduction = avg_u_inv - avg_g_inv
-    
-    print(f"  Average CRR Change:             {crr_change:+.1%}")
-    print(f"  Average Invalidation Reduction: {inv_reduction:+.1%}")
-    print()
-    
-    # Final verdict
-    if inv_reduction > 0.05 and abs(crr_change) < 0.10:
-        print("  VERDICT: P4 gating CONSISTENTLY effective across seeds")
-    elif inv_reduction > 0:
-        print("  VERDICT: P4 gating shows MODERATE improvement")
-    else:
-        print("  VERDICT: P4 gating effect INCONSISTENT")
-    
-    print("=" * 78)
+    print_comparison(ungated, p4, p4p5)
 
 
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="CRV Engine Demo with P4 Gating")
-    parser.add_argument("--bars", type=int, default=2000, help="Number of bars")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--multi", action="store_true", help="Run with multiple seeds")
-    parser.add_argument("--quiet", action="store_true", help="Less output")
+    parser = argparse.ArgumentParser(description="CRV Engine Demo with P5")
+    parser.add_argument("--bars", type=int, default=2000)
+    parser.add_argument("--seed", type=int, default=42)
     
     args = parser.parse_args()
-    
-    if args.multi:
-        run_multiple_seeds(n_seeds=5, n_bars=args.bars)
-    else:
-        run_demo(n_bars=args.bars, seed=args.seed, verbose=not args.quiet)
+    run_demo(n_bars=args.bars, seed=args.seed)

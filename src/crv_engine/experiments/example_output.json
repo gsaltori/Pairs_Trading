@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_id": "baseline_001",
+  "config_hash": "5fdcf49dda8707cf",
+  "run_timestamp": "2026-01-16T18:45:00.000000",
+  "config": {
+    "symbol_a": "EURUSD",
+    "symbol_b": "GBPUSD",
+    "timeframe": "H4",
+    "zscore_window": 60,
+    "correlation_window": 60,
+    "n_bars": 2000,
+    "random_seed": 42,
+    "use_synthetic": true,
+    "dimension_varied": "random_seed"
+  },
+  "metrics": {
+    "crr": 0.565,
+    "invalidation_rate": 0.348,
+    "timeout_rate": 0.008,
+    "total_predictions": 133,
+    "resolved_count": 132,
+    "testable_count": 85,
+    "confirmed_count": 48,
+    "refuted_count": 37,
+    "invalidated_count": 46,
+    "timeout_count": 1,
+    "erv": 10.5,
+    "erv_per_prediction": 0.079,
+    "median_bars_to_confirmation": 12.0,
+    "median_bars_to_refutation": 18.0,
+    "timing_asymmetry_ratio": 0.667,
+    "mean_bars_to_confirmation": 14.2,
+    "mean_bars_to_refutation": 21.3,
+    "conditional_crr_short_stability": 0.52,
+    "conditional_crr_medium_stability": 0.58,
+    "conditional_crr_long_stability": 0.62,
+    "conditional_n_short": 25,
+    "conditional_n_medium": 35,
+    "conditional_n_long": 25,
+    "bars_to_resolution_std": 11.4
+  },
+  "hypothesis_results": [
+    {
+      "hypothesis_id": "h_edge_baseline",
+      "verdict": "SUPPORTED",
+      "criteria_results": [
+        {
+          "criterion": "crr >= 0.55",
+          "metric_value": 0.565,
+          "threshold": 0.55,
+          "passed": true,
+          "description": "CRR must be at least 55%"
+        },
+        {
+          "criterion": "invalidation_rate <= 0.4",
+          "metric_value": 0.348,
+          "threshold": 0.4,
+          "passed": true,
+          "description": "Invalidation rate must not exceed 40%"
+        }
+      ],
+      "sample_checks": [
+        {
+          "requirement": "testable_count",
+          "minimum": 30,
+          "actual": 85,
+          "satisfied": true
+        }
+      ],
+      "summary": "All falsification criteria passed"
+    }
+  ],
+  "execution_time_seconds": 2.34,
+  "engine_version": "0.3.0",
+  "data_source": "synthetic",
+  "warnings": [],
+  "errors": []
+}

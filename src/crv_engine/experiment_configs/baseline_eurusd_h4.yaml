@@ -1,0 +1,40 @@
+# Baseline Experiment Configuration
+# EURUSD-GBPUSD H4 with default parameters
+#
+# This is the CONTROL experiment against which variations are compared.
+# NO parameters should be changed from defaults.
+
+experiment_id: baseline_eurusd_gbpusd_h4
+experiment_name: "Baseline EURUSD-GBPUSD H4"
+dimension_varied: BASELINE
+description: "Control experiment with default parameters"
+
+# Engine Parameters (FROZEN - from existing config)
+engine_params:
+  symbol_a: EURUSD
+  symbol_b: GBPUSD
+  timeframe: H4
+  zscore_window: 60
+  hedge_ratio_window: 60
+  trigger_threshold: 1.5
+  confirmation_threshold: 0.3
+  refutation_threshold: 3.0
+  max_holding_bars: 50
+  min_correlation: 0.20
+  max_correlation_drop: 0.30
+
+# Data Parameters
+data_params:
+  n_bars: 2000
+  random_seed: 42
+  use_synthetic: true
+
+# Gating
+structural_gating_enabled: true
+
+# Hypotheses to evaluate
+hypotheses:
+  - H1_CRR_ABOVE_RANDOM
+  - H2_INVALIDATION_ACCEPTABLE
+  - H3_POSITIVE_ERV
+  - H4_CONFIRMATION_ASYMMETRY

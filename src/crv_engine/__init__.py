@@ -2,11 +2,13 @@
 FX Conditional Relative Value Research Engine
 Minimum Executable Vertical Slice
 
-This package implements P1 (Spread Reversion) predictions with
-optional P4 (Structural Stability) gating.
+This package implements:
+- P1: Spread Reversion predictions
+- P4: Structural Stability gating
+- P5: Regime Memory learning
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "CRV Research Team"
 
 from .config import CONFIG
@@ -29,6 +31,25 @@ from .structural import (
     StructuralGate,
     STRUCTURAL_CONFIG,
 )
+from .regime import (
+    CorrelationStability,
+    CorrelationTrend,
+    VolatilityStability,
+    SpreadDynamics,
+    OutcomeType,
+    RegimeConfig,
+    RegimeSignature,
+    RegimeOutcome,
+    RegimeStats,
+    RegimeMemory,
+    RegimeEvaluation,
+    RegimeEvaluator,
+    RegimeGatedPredictionGenerator,
+    OutcomeRecorder,
+    create_regime_signature,
+    convert_resolution_to_outcome,
+    REGIME_CONFIG,
+)
 
 __all__ = [
     # Config
@@ -43,7 +64,7 @@ __all__ = [
     'SpreadCalculator',
     'SpreadObservation',
     
-    # Predictions (base and gated)
+    # Predictions
     'P1_SpreadReversionPrediction',
     'PredictionGenerator',
     'GatedPredictionGenerator',
@@ -66,4 +87,23 @@ __all__ = [
     'StructuralStabilityEvaluator',
     'StructuralGate',
     'STRUCTURAL_CONFIG',
+    
+    # Regime (P5)
+    'CorrelationStability',
+    'CorrelationTrend',
+    'VolatilityStability',
+    'SpreadDynamics',
+    'OutcomeType',
+    'RegimeConfig',
+    'RegimeSignature',
+    'RegimeOutcome',
+    'RegimeStats',
+    'RegimeMemory',
+    'RegimeEvaluation',
+    'RegimeEvaluator',
+    'RegimeGatedPredictionGenerator',
+    'OutcomeRecorder',
+    'create_regime_signature',
+    'convert_resolution_to_outcome',
+    'REGIME_CONFIG',
 ]
