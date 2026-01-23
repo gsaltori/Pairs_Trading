@@ -1,0 +1,520 @@
+{
+  "schema_version": "1.0.0",
+  "analysis_timestamp": "2026-01-17T16:23:24.534866+00:00",
+  "total_predictions": 288,
+  "total_blocks": 10,
+  "overall_crr": 0.5707070707070707,
+  "overall_inv_rate": 0.3055555555555556,
+  "correlation_level_metrics": [
+    {
+      "bucket_name": "correlation_level",
+      "bucket_value": "VERY_LOW",
+      "total_predictions": 78,
+      "testable_count": 10,
+      "confirmed_count": 6,
+      "refuted_count": 4,
+      "invalidated_count": 68,
+      "timeout_count": 0,
+      "crr": 0.6,
+      "invalidation_rate": 0.8717948717948718,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 13.833333333333334,
+      "mean_bars_to_refute": 0.0
+    },
+    {
+      "bucket_name": "correlation_level",
+      "bucket_value": "LOW",
+      "total_predictions": 10,
+      "testable_count": 7,
+      "confirmed_count": 4,
+      "refuted_count": 3,
+      "invalidated_count": 3,
+      "timeout_count": 0,
+      "crr": 0.5714285714285714,
+      "invalidation_rate": 0.3,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 7.0,
+      "mean_bars_to_refute": 0.6666666666666666
+    },
+    {
+      "bucket_name": "correlation_level",
+      "bucket_value": "MODERATE",
+      "total_predictions": 23,
+      "testable_count": 21,
+      "confirmed_count": 13,
+      "refuted_count": 8,
+      "invalidated_count": 2,
+      "timeout_count": 0,
+      "crr": 0.6190476190476191,
+      "invalidation_rate": 0.08695652173913043,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 18.076923076923077,
+      "mean_bars_to_refute": 0.375
+    },
+    {
+      "bucket_name": "correlation_level",
+      "bucket_value": "HIGH",
+      "total_predictions": 50,
+      "testable_count": 42,
+      "confirmed_count": 20,
+      "refuted_count": 22,
+      "invalidated_count": 8,
+      "timeout_count": 0,
+      "crr": 0.47619047619047616,
+      "invalidation_rate": 0.16,
+      "blocks_with_data": 1,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": 16.35,
+      "mean_bars_to_refute": 0.4090909090909091
+    },
+    {
+      "bucket_name": "correlation_level",
+      "bucket_value": "VERY_HIGH",
+      "total_predictions": 127,
+      "testable_count": 118,
+      "confirmed_count": 70,
+      "refuted_count": 48,
+      "invalidated_count": 7,
+      "timeout_count": 2,
+      "crr": 0.5932203389830508,
+      "invalidation_rate": 0.05511811023622047,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 12.071428571428571,
+      "mean_bars_to_refute": 4.395833333333333
+    }
+  ],
+  "correlation_trend_metrics": [
+    {
+      "bucket_name": "correlation_trend",
+      "bucket_value": "DETERIORATING",
+      "total_predictions": 102,
+      "testable_count": 44,
+      "confirmed_count": 15,
+      "refuted_count": 29,
+      "invalidated_count": 58,
+      "timeout_count": 0,
+      "crr": 0.3409090909090909,
+      "invalidation_rate": 0.5686274509803921,
+      "blocks_with_data": 1,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": 14.866666666666667,
+      "mean_bars_to_refute": 0.41379310344827586
+    },
+    {
+      "bucket_name": "correlation_trend",
+      "bucket_value": "STABLE",
+      "total_predictions": 119,
+      "testable_count": 106,
+      "confirmed_count": 68,
+      "refuted_count": 38,
+      "invalidated_count": 11,
+      "timeout_count": 2,
+      "crr": 0.6415094339622641,
+      "invalidation_rate": 0.09243697478991597,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 13.647058823529411,
+      "mean_bars_to_refute": 3.789473684210526
+    },
+    {
+      "bucket_name": "correlation_trend",
+      "bucket_value": "IMPROVING",
+      "total_predictions": 67,
+      "testable_count": 48,
+      "confirmed_count": 30,
+      "refuted_count": 18,
+      "invalidated_count": 19,
+      "timeout_count": 0,
+      "crr": 0.625,
+      "invalidation_rate": 0.2835820895522388,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 12.233333333333333,
+      "mean_bars_to_refute": 3.8333333333333335
+    }
+  ],
+  "volatility_ratio_metrics": [
+    {
+      "bucket_name": "volatility_ratio",
+      "bucket_value": "COMPRESSED",
+      "total_predictions": 40,
+      "testable_count": 26,
+      "confirmed_count": 11,
+      "refuted_count": 15,
+      "invalidated_count": 14,
+      "timeout_count": 0,
+      "crr": 0.4230769230769231,
+      "invalidation_rate": 0.35,
+      "blocks_with_data": 1,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": 9.818181818181818,
+      "mean_bars_to_refute": 3.4
+    },
+    {
+      "bucket_name": "volatility_ratio",
+      "bucket_value": "BALANCED",
+      "total_predictions": 226,
+      "testable_count": 154,
+      "confirmed_count": 88,
+      "refuted_count": 66,
+      "invalidated_count": 71,
+      "timeout_count": 1,
+      "crr": 0.5714285714285714,
+      "invalidation_rate": 0.3141592920353982,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 14.284090909090908,
+      "mean_bars_to_refute": 2.606060606060606
+    },
+    {
+      "bucket_name": "volatility_ratio",
+      "bucket_value": "IMBALANCED",
+      "total_predictions": 21,
+      "testable_count": 17,
+      "confirmed_count": 13,
+      "refuted_count": 4,
+      "invalidated_count": 3,
+      "timeout_count": 1,
+      "crr": 0.7647058823529411,
+      "invalidation_rate": 0.14285714285714285,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 11.076923076923077,
+      "mean_bars_to_refute": 0.5
+    },
+    {
+      "bucket_name": "volatility_ratio",
+      "bucket_value": "EXTREME",
+      "total_predictions": 1,
+      "testable_count": 1,
+      "confirmed_count": 1,
+      "refuted_count": 0,
+      "invalidated_count": 0,
+      "timeout_count": 0,
+      "crr": 1.0,
+      "invalidation_rate": 0.0,
+      "blocks_with_data": 0,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": 9.0,
+      "mean_bars_to_refute": null
+    }
+  ],
+  "spread_state_metrics": [
+    {
+      "bucket_name": "spread_state",
+      "bucket_value": "CONTRACTED",
+      "total_predictions": 0,
+      "testable_count": 0,
+      "confirmed_count": 0,
+      "refuted_count": 0,
+      "invalidated_count": 0,
+      "timeout_count": 0,
+      "crr": 0.0,
+      "invalidation_rate": 0.0,
+      "blocks_with_data": 0,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": null,
+      "mean_bars_to_refute": null
+    },
+    {
+      "bucket_name": "spread_state",
+      "bucket_value": "NORMAL",
+      "total_predictions": 124,
+      "testable_count": 83,
+      "confirmed_count": 73,
+      "refuted_count": 10,
+      "invalidated_count": 40,
+      "timeout_count": 1,
+      "crr": 0.8795180722891566,
+      "invalidation_rate": 0.3225806451612903,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 11.821917808219178,
+      "mean_bars_to_refute": 9.7
+    },
+    {
+      "bucket_name": "spread_state",
+      "bucket_value": "EXTENDED",
+      "total_predictions": 106,
+      "testable_count": 60,
+      "confirmed_count": 40,
+      "refuted_count": 20,
+      "invalidated_count": 45,
+      "timeout_count": 1,
+      "crr": 0.6666666666666666,
+      "invalidation_rate": 0.42452830188679247,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 16.375,
+      "mean_bars_to_refute": 6.4
+    },
+    {
+      "bucket_name": "spread_state",
+      "bucket_value": "EXTREME",
+      "total_predictions": 58,
+      "testable_count": 55,
+      "confirmed_count": 0,
+      "refuted_count": 55,
+      "invalidated_count": 3,
+      "timeout_count": 0,
+      "crr": 0.0,
+      "invalidation_rate": 0.05172413793103448,
+      "blocks_with_data": 1,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": null,
+      "mean_bars_to_refute": 0.0
+    }
+  ],
+  "regime_transition_metrics": [
+    {
+      "bucket_name": "regime_transition",
+      "bucket_value": "STABLE",
+      "total_predictions": 288,
+      "testable_count": 198,
+      "confirmed_count": 113,
+      "refuted_count": 85,
+      "invalidated_count": 88,
+      "timeout_count": 2,
+      "crr": 0.5707070707070707,
+      "invalidation_rate": 0.3055555555555556,
+      "blocks_with_data": 1,
+      "blocks_supported": 1,
+      "verdict_persistence": 1.0,
+      "mean_bars_to_confirm": 13.43362831858407,
+      "mean_bars_to_refute": 2.6470588235294117
+    },
+    {
+      "bucket_name": "regime_transition",
+      "bucket_value": "MINOR",
+      "total_predictions": 0,
+      "testable_count": 0,
+      "confirmed_count": 0,
+      "refuted_count": 0,
+      "invalidated_count": 0,
+      "timeout_count": 0,
+      "crr": 0.0,
+      "invalidation_rate": 0.0,
+      "blocks_with_data": 0,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": null,
+      "mean_bars_to_refute": null
+    },
+    {
+      "bucket_name": "regime_transition",
+      "bucket_value": "MAJOR",
+      "total_predictions": 0,
+      "testable_count": 0,
+      "confirmed_count": 0,
+      "refuted_count": 0,
+      "invalidated_count": 0,
+      "timeout_count": 0,
+      "crr": 0.0,
+      "invalidation_rate": 0.0,
+      "blocks_with_data": 0,
+      "blocks_supported": 0,
+      "verdict_persistence": 0.0,
+      "mean_bars_to_confirm": null,
+      "mean_bars_to_refute": null
+    }
+  ],
+  "failure_surfaces": [
+    {
+      "observable_name": "volatility_ratio",
+      "threshold_value": 1.1825894447890521,
+      "threshold_direction": "above",
+      "failure_crr": 0.5428571428571428,
+      "failure_inv_rate": 0.14285714285714285,
+      "sample_size": 42,
+      "confidence": 0.84,
+      "description": "Edge fails when volatility_ratio > 1.18"
+    },
+    {
+      "observable_name": "spread_zscore_abs",
+      "threshold_value": 3.7282497734142526,
+      "threshold_direction": "above",
+      "failure_crr": 0.0,
+      "failure_inv_rate": 0.0625,
+      "sample_size": 16,
+      "confidence": 0.32,
+      "description": "Edge fails when |Z-score| > 3.73"
+    },
+    {
+      "observable_name": "correlation_trend",
+      "threshold_value": 0.13191460831662738,
+      "threshold_direction": "below",
+      "failure_crr": 0.5454545454545454,
+      "failure_inv_rate": 0.37142857142857144,
+      "sample_size": 35,
+      "confidence": 0.7,
+      "description": "Edge fails when correlation_trend < 0.132"
+    }
+  ],
+  "necessary_failure_conditions": {
+    "correlation_requirements": [
+      {
+        "bucket": "HIGH",
+        "crr": 0.47619047619047616,
+        "sample_size": 42,
+        "interpretation": "Edge fails in HIGH correlation regime"
+      }
+    ],
+    "volatility_requirements": [
+      {
+        "bucket": "COMPRESSED",
+        "crr": 0.4230769230769231,
+        "sample_size": 26,
+        "interpretation": "Edge fails in COMPRESSED volatility regime"
+      }
+    ],
+    "spread_requirements": [
+      {
+        "bucket": "EXTREME",
+        "crr": 0.0,
+        "sample_size": 55,
+        "interpretation": "Edge fails in EXTREME spread state"
+      }
+    ],
+    "combined_requirements": [
+      {
+        "observable": "volatility_ratio",
+        "threshold": 1.1825894447890521,
+        "direction": "above",
+        "failure_crr": 0.5428571428571428,
+        "description": "Edge fails when volatility_ratio > 1.18"
+      },
+      {
+        "observable": "correlation_trend",
+        "threshold": 0.13191460831662738,
+        "direction": "below",
+        "failure_crr": 0.5454545454545454,
+        "description": "Edge fails when correlation_trend < 0.132"
+      }
+    ]
+  },
+  "non_failure_regions": {
+    "correlation_levels": [
+      {
+        "bucket": "VERY_LOW",
+        "crr": 0.6,
+        "inv_rate": 0.8717948717948718,
+        "sample_size": 10
+      },
+      {
+        "bucket": "MODERATE",
+        "crr": 0.6190476190476191,
+        "inv_rate": 0.08695652173913043,
+        "sample_size": 21
+      },
+      {
+        "bucket": "VERY_HIGH",
+        "crr": 0.5932203389830508,
+        "inv_rate": 0.05511811023622047,
+        "sample_size": 118
+      }
+    ],
+    "correlation_trends": [
+      {
+        "bucket": "STABLE",
+        "crr": 0.6415094339622641,
+        "inv_rate": 0.09243697478991597,
+        "sample_size": 106
+      },
+      {
+        "bucket": "IMPROVING",
+        "crr": 0.625,
+        "inv_rate": 0.2835820895522388,
+        "sample_size": 48
+      }
+    ],
+    "volatility_ratios": [
+      {
+        "bucket": "BALANCED",
+        "crr": 0.5714285714285714,
+        "inv_rate": 0.3141592920353982,
+        "sample_size": 154
+      },
+      {
+        "bucket": "IMBALANCED",
+        "crr": 0.7647058823529411,
+        "inv_rate": 0.14285714285714285,
+        "sample_size": 17
+      }
+    ],
+    "spread_states": [
+      {
+        "bucket": "NORMAL",
+        "crr": 0.8795180722891566,
+        "inv_rate": 0.3225806451612903,
+        "sample_size": 83
+      },
+      {
+        "bucket": "EXTENDED",
+        "crr": 0.6666666666666666,
+        "inv_rate": 0.42452830188679247,
+        "sample_size": 60
+      }
+    ]
+  },
+  "edge_safe_zone": {
+    "correlation_range": [
+      0.3116895803463013,
+      0.9911805895980792
+    ],
+    "volatility_ratio_range": [
+      0.49990830123499913,
+      2.001510587841491
+    ],
+    "spread_range": [
+      1.505136736858775,
+      5.400719846071809
+    ],
+    "correlation_trend_requirement": "any",
+    "safe_zone_crr": 0.5691489361702128,
+    "safe_zone_inv_rate": 0.09523809523809523,
+    "safe_zone_sample_size": 210,
+    "coverage_fraction": 0.7291666666666666
+  },
+  "collapse_analysis": {
+    "collapse_type": "NO_COLLAPSE",
+    "confidence": 0.9000960386831482,
+    "evidence": {
+      "crr_trend": -0.009990396131685179,
+      "crr_std": 0.08002162452450386
+    },
+    "description": "Edge appears stable, no collapse detected"
+  },
+  "flags": {
+    "has_failure_boundaries": true,
+    "has_correlation_dependency": true,
+    "has_volatility_dependency": true,
+    "has_spread_dependency": true,
+    "has_safe_zone": true,
+    "safe_zone_is_narrow": false,
+    "is_gradual_decay": false,
+    "is_regime_flip": false,
+    "is_structurally_unstable": false,
+    "is_noise_dominated": false,
+    "edge_is_fragile": true
+  }
+}

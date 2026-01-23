@@ -3,18 +3,6 @@ CRV Experiment Harness
 
 A reproducible experiment platform for evaluating the CRV engine
 under controlled variation.
-
-DESIGN PRINCIPLES:
-1. Engine logic is FROZEN - this harness does not modify it
-2. One dimension varied per experiment
-3. Explicit, falsifiable hypotheses
-4. Machine-readable output
-5. Full audit trail
-
-MODULES:
-- experiments: Single-run experiment framework
-- walk_forward: Temporal stability analysis
-- edge_boundary: Failure mode cartography
 """
 
 # Core experiment framework
@@ -82,7 +70,9 @@ from .walk_forward import (
 
 from .walk_forward_runner import (
     WalkForwardRunner,
+    WalkForwardResult,
     BlockExecutor,
+    BlockExecutionResult,
     run_walk_forward,
 )
 
@@ -114,6 +104,15 @@ from .edge_boundary import (
 from .edge_boundary_analyzer import (
     EdgeBoundaryAnalyzer,
     analyze_edge_boundaries,
+)
+
+# Trade Gatekeeper (risk firewall)
+from .trade_gatekeeper import (
+    TradeGatekeeper,
+    TradePermission,
+    BlockReason,
+    create_gatekeeper,
+    check_trade_permission,
 )
 
 
@@ -173,7 +172,9 @@ __all__ = [
     'WALK_FORWARD_SCHEMA_VERSION',
     'compute_temporal_stability',
     'WalkForwardRunner',
+    'WalkForwardResult',
     'BlockExecutor',
+    'BlockExecutionResult',
     'run_walk_forward',
     
     # Edge Boundary
@@ -200,4 +201,11 @@ __all__ = [
     'identify_safe_zone',
     'EdgeBoundaryAnalyzer',
     'analyze_edge_boundaries',
+    
+    # Trade Gatekeeper
+    'TradeGatekeeper',
+    'TradePermission',
+    'BlockReason',
+    'create_gatekeeper',
+    'check_trade_permission',
 ]
